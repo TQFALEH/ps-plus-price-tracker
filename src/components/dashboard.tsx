@@ -9,6 +9,7 @@ import {
   addCountry,
   getCountries,
   getPrices,
+  getRefreshJob,
   refreshAll,
   refreshCountry,
   removeCountry
@@ -42,6 +43,7 @@ export function Dashboard() {
   const [error, setError] = useState<string>("");
   const [didAutoBootstrap, setDidAutoBootstrap] = useState(false);
   const [viewMode, setViewMode] = useState<ViewMode>("subscriptions");
+  const [activeJobId, setActiveJobId] = useState<string | null>(null);
 
   const copy = isAr
     ? {
@@ -51,7 +53,7 @@ export function Dashboard() {
         subscriptions: "الاشتراكات",
         games: "الألعاب",
         refreshClient: "تحديث الكل (محلي)",
-        refreshServer: "تحديث الكل (سيرفر)",
+        refreshServer: "تحديث ذكي (Background)",
         loading: "جاري تحميل اللوحة...",
         rows: "عدد الصفوف",
         countries: "عدد الدول",
@@ -79,7 +81,10 @@ export function Dashboard() {
         refreshFailed: "فشل تحديث الكل",
         initialSyncFailed: "فشلت المزامنة الأولى",
         deleteFailed: "فشل الحذف",
-        singleRefreshFailed: "فشل تحديث الدولة"
+        singleRefreshFailed: "فشل تحديث الدولة",
+        shareFilters: "نسخ رابط الفلاتر",
+        exportCsv: "تصدير CSV",
+        exportJson: "تصدير JSON"
       }
     : {
         badge: "Intelligence Hub",
@@ -87,8 +92,8 @@ export function Dashboard() {
         subtitle: "A unified command center for global price comparison with precise SAR conversion.",
         subscriptions: "Subscriptions",
         games: "Games",
-        refreshClient: "Refresh All (client)",
-        refreshServer: "Refresh All (server)",
+        refreshClient: "Refresh All (force)",
+        refreshServer: "Smart Refresh (Background)",
         loading: "Loading dashboard...",
         rows: "Rows",
         countries: "Countries",
@@ -112,16 +117,27 @@ export function Dashboard() {
         done: "Done",
         refreshAll: "Refreshing all countries...",
         initialSync: "First sync started...",
-        syncLabel: "First sync",
+        syncLabel: "Sync",
         refreshFailed: "Refresh all failed",
         initialSyncFailed: "Initial sync failed",
         deleteFailed: "Delete failed",
-        singleRefreshFailed: "Refresh failed"
+        singleRefreshFailed: "Refresh failed",
+        shareFilters: "Share Filters",
+        exportCsv: "Export CSV",
+        exportJson: "Export JSON"
       };
 
   const pricesQuery = useQuery({
-    queryKey: ["prices"],
-    queryFn: getPrices
+    queryKey: ["prices", search, currency, tier, duration, sortBy, sortDir],
+    queryFn: () =>
+      getPrices({
+        search,
+        currency,
+        tier,
+        duration,
+        sortBy,
+        sortDir
+      })
   });
 
   const countriesQuery = useQuery({
@@ -141,19 +157,7 @@ export function Dashboard() {
 
   const filteredRows = useMemo(() => {
     const rows = pricesQuery.data ?? [];
-
-    const searched = rows.filter((row) => {
-      if (search) {
-        const target = `${row.countryName} ${row.isoCode} ${row.currency} ${row.tier}`.toLowerCase();
-        if (!target.includes(search.toLowerCase())) return false;
-      }
-      if (currency !== "all" && row.currency !== currency) return false;
-      if (tier !== "all" && row.tier !== tier) return false;
-      if (duration !== "all" && String(row.durationMonths) !== duration) return false;
-      return true;
-    });
-
-    return [...searched].sort((a, b) => {
+    return [...rows].sort((a, b) => {
       let diff = 0;
       if (sortBy === "sarPrice") {
         const aSar = typeof a.sarPrice === "number" ? a.sarPrice : Number.POSITIVE_INFINITY;
@@ -166,7 +170,7 @@ export function Dashboard() {
       }
       return sortDir === "asc" ? diff : -diff;
     });
-  }, [pricesQuery.data, search, currency, tier, duration, sortBy, sortDir]);
+  }, [pricesQuery.data, sortBy, sortDir]);
 
   const currencyOptions = useMemo(() => {
     return Array.from(new Set((pricesQuery.data ?? []).map((r) => r.currency))).sort();
@@ -238,6 +242,10 @@ export function Dashboard() {
 
     while (!done) {
       const result = await refreshAll(true, { offset, limit: batchSize });
+      if ("jobId" in result) {
+        setActiveJobId(result.jobId);
+        return;
+      }
       const from = result.offset + 1;
       const to = result.offset + result.processed;
       setRefreshProgress(`${labelPrefix} ${from}-${to} / ${result.total}`);
@@ -250,6 +258,12 @@ export function Dashboard() {
     setError("");
     setRefreshProgress(copy.refreshAll);
     try {
+      const response = await refreshAll(false, { async: true, staleOnly: true });
+      if ("jobId" in response && typeof response.jobId === "string") {
+        setActiveJobId(response.jobId);
+        return;
+      }
+
       await runBatchedRefresh(copy.syncLabel);
       await qc.invalidateQueries({ queryKey: ["prices"] });
       setRefreshProgress(copy.done);
@@ -258,6 +272,51 @@ export function Dashboard() {
       setError(e instanceof Error ? e.message : copy.refreshFailed);
       setRefreshProgress("");
     }
+  }
+
+  function shareCurrentFilters() {
+    const params = new URLSearchParams();
+    if (search) params.set("search", search);
+    if (currency !== "all") params.set("currency", currency);
+    if (tier !== "all") params.set("tier", tier);
+    if (duration !== "all") params.set("duration", duration);
+    params.set("sortBy", sortBy);
+    params.set("sortDir", sortDir);
+    params.set("view", viewMode);
+    const url = `${window.location.origin}${window.location.pathname}?${params.toString()}`;
+    navigator.clipboard.writeText(url).catch(() => undefined);
+  }
+
+  function exportRows(format: "csv" | "json") {
+    if (filteredRows.length === 0) return;
+
+    let content = "";
+    let type = "";
+    let ext = "";
+
+    if (format === "json") {
+      content = JSON.stringify(filteredRows, null, 2);
+      type = "application/json;charset=utf-8";
+      ext = "json";
+    } else {
+      const header = ["country", "iso", "currency", "tier", "durationMonths", "price", "sarPrice", "lastUpdated", "syncStatus", "syncError"];
+      const lines = filteredRows.map((r) =>
+        [r.countryName, r.isoCode, r.currency, r.tier, String(r.durationMonths), String(r.price), String(r.sarPrice ?? ""), r.lastUpdated, String(r.syncStatus ?? ""), String(r.syncError ?? "")]
+          .map((value) => `"${String(value).replace(/"/g, '""')}"`)
+          .join(",")
+      );
+      content = [header.join(","), ...lines].join("\n");
+      type = "text/csv;charset=utf-8";
+      ext = "csv";
+    }
+
+    const blob = new Blob([content], { type });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `ps-plus-prices-${new Date().toISOString().slice(0, 19).replace(/[:T]/g, "-")}.${ext}`;
+    a.click();
+    URL.revokeObjectURL(url);
   }
 
   useEffect(() => {
@@ -309,6 +368,82 @@ export function Dashboard() {
       { opacity: 1, y: 0, filter: "blur(0px)", duration: 0.55, ease: "power3.out" }
     );
   }, [viewMode]);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const params = new URLSearchParams(window.location.search);
+    const view = params.get("view");
+    const qsSearch = params.get("search");
+    const qsCurrency = params.get("currency");
+    const qsTier = params.get("tier");
+    const qsDuration = params.get("duration");
+    const qsSortBy = params.get("sortBy");
+    const qsSortDir = params.get("sortDir");
+
+    if (view === "subscriptions" || view === "games") setViewMode(view);
+    if (qsSearch) setSearch(qsSearch);
+    if (qsCurrency) setCurrency(qsCurrency);
+    if (qsTier) setTier(qsTier);
+    if (qsDuration) setDuration(qsDuration);
+    if (qsSortBy === "country" || qsSortBy === "sarPrice" || qsSortBy === "lastUpdated") setSortBy(qsSortBy);
+    if (qsSortDir === "asc" || qsSortDir === "desc") setSortDir(qsSortDir);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  useEffect(() => {
+    if (!activeJobId) return;
+    let mounted = true;
+
+    const timer = setInterval(async () => {
+      try {
+        const job = await getRefreshJob(activeJobId);
+        if (!mounted) return;
+        setRefreshProgress(`${copy.syncLabel} ${job.progressText} (${job.processed}/${job.total || "?"})`);
+
+        if (job.status === "done") {
+          setActiveJobId(null);
+          setRefreshProgress(copy.done);
+          await qc.invalidateQueries({ queryKey: ["prices"] });
+          setTimeout(() => setRefreshProgress(""), 1200);
+          clearInterval(timer);
+        }
+
+        if (job.status === "failed") {
+          setActiveJobId(null);
+          setError(job.error ?? copy.refreshFailed);
+          setRefreshProgress("");
+          clearInterval(timer);
+        }
+      } catch (e) {
+        if (!mounted) return;
+        setActiveJobId(null);
+        setError(e instanceof Error ? e.message : copy.refreshFailed);
+        setRefreshProgress("");
+        clearInterval(timer);
+      }
+    }, 1200);
+
+    return () => {
+      mounted = false;
+      clearInterval(timer);
+    };
+  }, [activeJobId, copy.syncLabel, copy.done, copy.refreshFailed, qc]);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const params = new URLSearchParams();
+    if (search) params.set("search", search);
+    if (currency !== "all") params.set("currency", currency);
+    if (tier !== "all") params.set("tier", tier);
+    if (duration !== "all") params.set("duration", duration);
+    if (sortBy !== "sarPrice") params.set("sortBy", sortBy);
+    if (sortDir !== "asc") params.set("sortDir", sortDir);
+    if (viewMode !== "subscriptions") params.set("view", viewMode);
+
+    const qs = params.toString();
+    const target = qs ? `${window.location.pathname}?${qs}` : window.location.pathname;
+    window.history.replaceState(null, "", target);
+  }, [search, currency, tier, duration, sortBy, sortDir, viewMode]);
 
   if (pricesQuery.isLoading || countriesQuery.isLoading) {
     return <div className="p-8 text-sm text-[var(--muted)]">{copy.loading}</div>;
@@ -378,6 +513,15 @@ export function Dashboard() {
             </button>
             <button type="button" onClick={handleSmartRefreshAll} className="primary-btn">
               {copy.refreshServer}
+            </button>
+            <button type="button" onClick={shareCurrentFilters} className="soft-btn">
+              {copy.shareFilters}
+            </button>
+            <button type="button" onClick={() => exportRows("csv")} className="soft-btn">
+              {copy.exportCsv}
+            </button>
+            <button type="button" onClick={() => exportRows("json")} className="soft-btn">
+              {copy.exportJson}
             </button>
           </div>
 

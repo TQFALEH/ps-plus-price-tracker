@@ -27,11 +27,20 @@ export function GameSearchSection() {
   const [loading, setLoading] = useState(false);
   const [progress, setProgress] = useState("");
   const [error, setError] = useState("");
+  const [history, setHistory] = useState<string[]>([]);
+  const [showSuggestions, setShowSuggestions] = useState(false);
 
   const [countryFilter, setCountryFilter] = useState("all");
   const [typeFilter, setTypeFilter] = useState("all");
   const [sortBy, setSortBy] = useState<GameSort>("sarAsc");
   const [maxSar, setMaxSar] = useState("");
+
+  const suggestions = useMemo(() => {
+    const q = query.trim().toLowerCase();
+    const merged = Array.from(new Set([...history, ...rows.map((r) => r.gameName)]));
+    if (!q) return merged.slice(0, 6);
+    return merged.filter((name) => name.toLowerCase().includes(q)).slice(0, 8);
+  }, [history, rows, query]);
 
   useEffect(() => {
     if (!sectionRef.current) return;
@@ -41,6 +50,19 @@ export function GameSearchSection() {
       { opacity: 0, y: 22, filter: "blur(8px)" },
       { opacity: 1, y: 0, filter: "blur(0px)", duration: 0.75, ease: "power3.out" }
     );
+  }, []);
+
+  useEffect(() => {
+    const raw = typeof window !== "undefined" ? window.localStorage.getItem("ps-game-search-history") : null;
+    if (!raw) return;
+    try {
+      const parsed = JSON.parse(raw) as string[];
+      if (Array.isArray(parsed)) {
+        setHistory(parsed.slice(0, 10));
+      }
+    } catch {
+      // ignore malformed local cache
+    }
   }, []);
 
   const countryOptions = useMemo(() => {
@@ -92,8 +114,8 @@ export function GameSearchSection() {
     );
   }, [filteredRows]);
 
-  async function onSearch() {
-    const name = query.trim();
+  async function onSearch(nameInput?: string) {
+    const name = (nameInput ?? query).trim();
     if (!name) {
       setError(isAr ? "اكتب اسم اللعبة أولًا" : "Enter a game name first");
       return;
@@ -124,6 +146,13 @@ export function GameSearchSection() {
       }
 
       setRows(all);
+      if (name) {
+        const nextHistory = [name, ...history.filter((h) => h.toLowerCase() !== name.toLowerCase())].slice(0, 10);
+        setHistory(nextHistory);
+        if (typeof window !== "undefined") {
+          window.localStorage.setItem("ps-game-search-history", JSON.stringify(nextHistory));
+        }
+      }
       setCountryFilter("all");
       setTypeFilter("all");
       setSortBy("sarAsc");
@@ -147,21 +176,62 @@ export function GameSearchSection() {
       </div>
 
       <div className="grid gap-3 lg:grid-cols-[1fr_auto]">
-        <input
-          className="soft-input"
-          placeholder={isAr ? "مثال: Elden Ring أو GTA V أو FC 25" : "Example: Elden Ring, GTA V, FC 25"}
-          value={query}
-          onChange={(e) => setQuery(e.target.value)}
-        />
+        <div className="relative">
+          <input
+            className="soft-input w-full"
+            placeholder={isAr ? "مثال: Elden Ring أو GTA V أو FC 25" : "Example: Elden Ring, GTA V, FC 25"}
+            value={query}
+            onFocus={() => setShowSuggestions(true)}
+            onBlur={() => setTimeout(() => setShowSuggestions(false), 120)}
+            onChange={(e) => setQuery(e.target.value)}
+          />
+          {showSuggestions && suggestions.length > 0 ? (
+            <div className="card absolute z-20 mt-1 max-h-56 w-full overflow-auto p-1">
+              {suggestions.map((item) => (
+                <button
+                  key={item}
+                  type="button"
+                  className="w-full rounded-md px-2 py-1.5 text-left text-xs hover:bg-slate-100 dark:hover:bg-slate-800"
+                  onMouseDown={(e) => {
+                    e.preventDefault();
+                    setQuery(item);
+                  }}
+                >
+                  {item}
+                </button>
+              ))}
+            </div>
+          ) : null}
+        </div>
         <button
           type="button"
-          onClick={onSearch}
+          onClick={() => {
+            void onSearch();
+          }}
           disabled={loading}
           className="primary-btn disabled:opacity-60"
         >
           {loading ? (isAr ? "جاري البحث..." : "Searching...") : (isAr ? "ابحث عن لعبة" : "Search Game")}
         </button>
       </div>
+
+      {history.length > 0 ? (
+        <div className="mt-3 flex flex-wrap gap-2">
+          {history.slice(0, 6).map((item) => (
+            <button
+              key={item}
+              type="button"
+              className="chip hover:border-[var(--accent)]"
+              onClick={() => {
+                setQuery(item);
+                void onSearch(item);
+              }}
+            >
+              {item}
+            </button>
+          ))}
+        </div>
+      ) : null}
 
       <div className="mt-3 grid gap-3 md:grid-cols-2 xl:grid-cols-4">
         <select className="soft-select" value={countryFilter} onChange={(e) => setCountryFilter(e.target.value)}>
@@ -209,9 +279,27 @@ export function GameSearchSection() {
       ) : null}
 
       {filteredRows.length > 0 ? (
-        <div ref={cardsWrapRef} className="mt-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
-          {filteredRows.map((row) => (
-            <article data-game-card key={`${row.countryId}-${row.productId}`} className="card ios-game-card overflow-hidden border">
+        <>
+          <div className="mt-4 overflow-hidden rounded-xl border">
+            <div className="grid grid-cols-4 gap-2 border-b bg-slate-50 px-3 py-2 text-[11px] font-semibold uppercase tracking-wide text-[var(--muted)] dark:bg-slate-900/40">
+              <span>{isAr ? "الدولة" : "Country"}</span>
+              <span>{isAr ? "السعر المحلي" : "Local Price"}</span>
+              <span>{isAr ? "السعر بالريال" : "SAR Price"}</span>
+              <span>{isAr ? "الرابط" : "Link"}</span>
+            </div>
+            {filteredRows.map((row) => (
+              <div key={`cmp-${row.countryId}-${row.productId}`} className="grid grid-cols-4 gap-2 border-b px-3 py-2 text-xs last:border-b-0">
+                <span>{isoToFlag(row.isoCode)} {row.countryName}</span>
+                <span>{row.displayPrice}</span>
+                <span>{typeof row.sarPrice === "number" ? `${row.sarPrice.toFixed(2)} SAR` : "-"}</span>
+                <a href={row.sourceUrl} target="_blank" rel="noreferrer" className="text-[var(--accent)] hover:underline">{isAr ? "فتح" : "Open"}</a>
+              </div>
+            ))}
+          </div>
+
+          <div ref={cardsWrapRef} className="mt-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
+            {filteredRows.map((row) => (
+              <article data-game-card key={`${row.countryId}-${row.productId}`} className="card ios-game-card overflow-hidden border">
               <div className="relative aspect-[16/9] w-full bg-slate-100 dark:bg-slate-900">
                 {row.posterUrl ? (
                   <img src={row.posterUrl} alt={row.gameName} className="h-full w-full object-cover" loading="lazy" />
@@ -243,9 +331,10 @@ export function GameSearchSection() {
                   {isAr ? "افتح في المتجر" : "Open In Store"}
                 </a>
               </div>
-            </article>
-          ))}
-        </div>
+              </article>
+            ))}
+          </div>
+        </>
       ) : rows.length > 0 ? (
         <div className="mt-4 rounded-xl border border-dashed p-6 text-center text-sm text-[var(--muted)]">
           {isAr ? "لا توجد نتائج بهذه الفلاتر." : "No results with current filters."}

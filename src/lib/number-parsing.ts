@@ -25,7 +25,8 @@ export function parseLocalizedNumber(input: string): number | null {
     return noThousands;
   };
 
-  // If both separators exist, choose decimal by the rightmost separator when it has 1-2 digits after it.
+  // If both separators exist, choose decimal by the rightmost separator when it has 1-3 digits after it.
+  // 3 digits is important for currencies with milli-units and some storefront formats.
   if (hasComma && hasDot) {
     const lastComma = value.lastIndexOf(",");
     const lastDot = value.lastIndexOf(".");
@@ -33,18 +34,30 @@ export function parseLocalizedNumber(input: string): number | null {
     const rightmostSep = value[rightmostPos] as "," | ".";
     const digitsAfter = value.length - rightmostPos - 1;
 
-    if (digitsAfter >= 1 && digitsAfter <= 2) {
+    if (digitsAfter >= 1 && digitsAfter <= 3) {
       value = normalizeWithDecimal(rightmostSep);
     } else {
       // No decimal part; treat all separators as thousands separators.
       value = value.replace(/[.,]/g, "");
     }
   } else if (hasComma) {
-    // Comma only: decimal if it ends with 1-2 digits, otherwise thousands.
-    value = /,\d{1,2}$/.test(value) ? value.replace(",", ".") : value.replace(/,/g, "");
+    // Comma only:
+    // - decimal if it ends with 1-2 digits and there is only one comma
+    // - otherwise treat commas as thousands separators.
+    if (/,\d{1,2}$/.test(value) && value.indexOf(",") === value.lastIndexOf(",")) {
+      value = value.replace(",", ".");
+    } else {
+      value = value.replace(/,/g, "");
+    }
   } else if (hasDot) {
-    // Dot only: decimal if it ends with 1-2 digits, otherwise thousands.
-    value = /\.\d{1,2}$/.test(value) ? value : value.replace(/\./g, "");
+    // Dot only:
+    // - decimal if it ends with 1-2 digits and there is only one dot
+    // - otherwise treat dots as thousands separators.
+    if (/\.\d{1,2}$/.test(value) && value.indexOf(".") === value.lastIndexOf(".")) {
+      value = value;
+    } else {
+      value = value.replace(/\./g, "");
+    }
   }
 
   const parsed = Number(sign + value);

@@ -19,6 +19,7 @@ const columns = [
   "Tier",
   "Duration",
   "Price",
+  "Sync",
   "Last Updated",
   "Source",
   "Actions"
@@ -73,9 +74,9 @@ export function PriceTable({
   return (
     <div className="space-y-4">
       <div className="card overflow-hidden max-md:hidden">
-        <div className="grid grid-cols-9 gap-2 border-b px-4 py-3 text-[11px] font-semibold uppercase tracking-wide text-[var(--muted)]">
+        <div className="grid grid-cols-10 gap-2 border-b px-4 py-3 text-[11px] font-semibold uppercase tracking-wide text-[var(--muted)]">
           {(isAr
-            ? ["الدولة", "ISO", "العملة", "الباقة", "المدة", "السعر", "آخر تحديث", "المصدر", "الإجراءات"]
+            ? ["الدولة", "ISO", "العملة", "الباقة", "المدة", "السعر", "المزامنة", "آخر تحديث", "المصدر", "الإجراءات"]
             : columns
           ).map((col) => (
             <div key={col}>{col}</div>
@@ -91,7 +92,7 @@ export function PriceTable({
               return (
                 <div
                   key={row.id}
-                  className="absolute left-0 top-0 grid w-full grid-cols-9 gap-2 border-b px-4 py-3 text-sm"
+                  className="absolute left-0 top-0 grid w-full grid-cols-10 gap-2 border-b px-4 py-3 text-sm"
                   style={{ transform: `translateY(${virtualRow.start}px)` }}
                 >
                   <div className="truncate font-semibold">
@@ -127,6 +128,14 @@ export function PriceTable({
                       <div className="text-xs text-amber-600 dark:text-amber-400">
                         ~ {formatAmount(row.localEstimatedPrice)} {row.localCurrencyCodes[0]} {isAr ? "(تقريبي)" : "(est.)"}
                       </div>
+                    ) : null}
+                  </div>
+                  <div>
+                    <span className="chip">
+                      {row.syncStatus ?? (isAr ? "غير معروف" : "Unknown")}
+                    </span>
+                    {row.syncError ? (
+                      <p className="mt-1 text-[11px] text-red-500 dark:text-red-400">{row.syncError}</p>
                     ) : null}
                   </div>
                   <div className="text-xs text-[var(--muted)]">{new Date(row.lastUpdated).toLocaleString()}</div>
@@ -198,6 +207,11 @@ export function PriceTable({
                 <div className="text-[var(--muted)]">{isAr ? "السعر بالريال" : "Saudi Price"}</div>
                 <div>
                   {typeof row.sarPrice === "number" ? `${formatAmount(row.sarPrice)} SAR` : isAr ? "غير متاح" : "N/A"}
+                </div>
+                <div className="text-[var(--muted)]">{isAr ? "المزامنة" : "Sync"}</div>
+                <div>
+                  <span className="chip">{row.syncStatus ?? (isAr ? "غير معروف" : "Unknown")}</span>
+                  {row.syncError ? <p className="mt-1 text-[11px] text-red-500 dark:text-red-400">{row.syncError}</p> : null}
                 </div>
                 {row.isLocalCurrency === false &&
                 typeof row.localEstimatedPrice === "number" &&

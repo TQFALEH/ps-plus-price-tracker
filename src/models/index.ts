@@ -27,6 +27,9 @@ export interface PriceRecord {
   sarPrice?: number | null;
   lastUpdated: string;
   sourceUrl: string | null;
+  syncStatus?: "ok" | "cached" | "error" | null;
+  syncError?: string | null;
+  syncedAt?: string | null;
 }
 
 export interface CountryInput {

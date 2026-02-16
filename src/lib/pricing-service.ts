@@ -6,6 +6,7 @@ import {
   getCountryByIso,
   insertCountriesIfMissing,
   listCountries,
+  upsertCountrySyncStatus,
   upsertPrices
 } from "@/lib/db";
 import { discoverSupportedCountries } from "@/lib/country-discovery";
@@ -17,8 +18,13 @@ export async function refreshCountry(
   country: Country,
   force = false
 ): Promise<RefreshResult> {
+  const syncedAt = nowIso();
   try {
     if (!force && areCountryPricesFresh(country.id)) {
+      upsertCountrySyncStatus(country.id, {
+        status: "cached",
+        syncedAt
+      });
       return {
         countryId: country.id,
         isoCode: country.isoCode,
@@ -30,6 +36,11 @@ export async function refreshCountry(
     const parsed = await fetchCountryPrices(country);
 
     if (parsed.length === 0) {
+      upsertCountrySyncStatus(country.id, {
+        status: "error",
+        errorMessage: "No parsable price data returned from source",
+        syncedAt
+      });
       return {
         countryId: country.id,
         isoCode: country.isoCode,
@@ -55,6 +66,11 @@ export async function refreshCountry(
       }))
     );
 
+    upsertCountrySyncStatus(country.id, {
+      status: "ok",
+      syncedAt
+    });
+
     return {
       countryId: country.id,
       isoCode: country.isoCode,
@@ -66,6 +82,12 @@ export async function refreshCountry(
       countryId: country.id,
       isoCode: country.isoCode,
       error
+    });
+
+    upsertCountrySyncStatus(country.id, {
+      status: "error",
+      errorMessage: error instanceof Error ? error.message : "Unknown error",
+      syncedAt
     });
 
     return {

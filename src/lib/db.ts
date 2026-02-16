@@ -146,6 +146,14 @@ CREATE TABLE IF NOT EXISTS prices (
   UNIQUE(country_id, tier, duration_months),
   FOREIGN KEY(country_id) REFERENCES countries(id) ON DELETE CASCADE
 );
+
+CREATE TABLE IF NOT EXISTS country_sync_status (
+  country_id INTEGER PRIMARY KEY,
+  status TEXT NOT NULL,
+  error_message TEXT,
+  synced_at TEXT NOT NULL,
+  FOREIGN KEY(country_id) REFERENCES countries(id) ON DELETE CASCADE
+);
 `);
 
   const existingCount = db.prepare("SELECT COUNT(*) as count FROM countries").get() as { count: number };
@@ -174,6 +182,7 @@ type MemoryStore = {
   nextPriceId: number;
   countries: MemoryCountry[];
   prices: MemoryPrice[];
+  syncStates: Record<number, { status: "ok" | "cached" | "error"; errorMessage: string | null; syncedAt: string }>;
 };
 
 const fallbackFile = resolveJsonFallbackPath(absoluteDbPath);
@@ -212,7 +221,8 @@ function loadMemoryStore(): MemoryStore {
         nextCountryId: 1,
         nextPriceId: 1,
         countries: [],
-        prices: []
+        prices: [],
+        syncStates: {}
       };
     }
   } catch (error) {
@@ -221,12 +231,18 @@ function loadMemoryStore(): MemoryStore {
       nextCountryId: 1,
       nextPriceId: 1,
       countries: [],
-      prices: []
+      prices: [],
+      syncStates: {}
     };
   }
 
   if (memoryStore.countries.length === 0) {
     seedDefaultCountriesInMemory();
+    persistMemoryStore();
+  }
+
+  if (!memoryStore.syncStates) {
+    memoryStore.syncStates = {};
     persistMemoryStore();
   }
 
@@ -386,6 +402,7 @@ export function deleteCountry(id: number): boolean {
       return false;
     }
     store.prices = store.prices.filter((p) => p.countryId !== id);
+    delete store.syncStates[id];
     persistMemoryStore();
     return true;
   }
@@ -403,6 +420,39 @@ export interface UpsertPriceInput {
   sourceUrl?: string | null;
   lastUpdated: string;
   cacheExpiresAt: string;
+}
+
+export function upsertCountrySyncStatus(
+  countryId: number,
+  input: { status: "ok" | "cached" | "error"; errorMessage?: string | null; syncedAt: string }
+) {
+  if (!db) {
+    const store = loadMemoryStore();
+    store.syncStates[countryId] = {
+      status: input.status,
+      errorMessage: input.errorMessage ?? null,
+      syncedAt: input.syncedAt
+    };
+    persistMemoryStore();
+    return;
+  }
+
+  db.prepare(
+    `
+      INSERT INTO country_sync_status (country_id, status, error_message, synced_at)
+      VALUES (@countryId, @status, @errorMessage, @syncedAt)
+      ON CONFLICT(country_id)
+      DO UPDATE SET
+        status = excluded.status,
+        error_message = excluded.error_message,
+        synced_at = excluded.synced_at
+    `
+  ).run({
+    countryId,
+    status: input.status,
+    errorMessage: input.errorMessage ?? null,
+    syncedAt: input.syncedAt
+  });
 }
 
 export function upsertPrices(entries: UpsertPriceInput[]) {
@@ -532,7 +582,10 @@ export function getPrices(filters?: {
       durationMonths: row.durationMonths,
       price: row.price,
       lastUpdated: row.lastUpdated,
-      sourceUrl: row.sourceUrl
+      sourceUrl: row.sourceUrl,
+      syncStatus: store.syncStates[row.countryId]?.status ?? null,
+      syncError: store.syncStates[row.countryId]?.errorMessage ?? null,
+      syncedAt: store.syncStates[row.countryId]?.syncedAt ?? null
     }));
   }
 
@@ -583,9 +636,13 @@ export function getPrices(filters?: {
         p.duration_months,
         p.price,
         p.last_updated,
-        p.source_url
+        p.source_url,
+        s.status AS sync_status,
+        s.error_message AS sync_error,
+        s.synced_at AS synced_at
       FROM prices p
       JOIN countries c ON c.id = p.country_id
+      LEFT JOIN country_sync_status s ON s.country_id = c.id
       ${whereClause}
       ORDER BY ${sortField} ${sortDir}
       `
@@ -602,7 +659,13 @@ export function getPrices(filters?: {
     durationMonths: Number(row.duration_months) as DurationMonths,
     price: Number(row.price),
     lastUpdated: String(row.last_updated),
-    sourceUrl: row.source_url ? String(row.source_url) : null
+    sourceUrl: row.source_url ? String(row.source_url) : null,
+    syncStatus:
+      row.sync_status === "ok" || row.sync_status === "cached" || row.sync_status === "error"
+        ? row.sync_status
+        : null,
+    syncError: row.sync_error ? String(row.sync_error) : null,
+    syncedAt: row.synced_at ? String(row.synced_at) : null
   }));
 }
 
@@ -655,4 +718,8 @@ export function areCountryPricesFresh(countryId: number, now = nowIso()) {
   }
 
   return row.min_expiry > now;
+}
+
+export function getDbMode() {
+  return db ? "sqlite" : "json";
 }

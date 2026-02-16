@@ -13,6 +13,9 @@ export const countrySchema = z.object({
 export const refreshSchema = z.object({
   all: z.boolean().optional(),
   force: z.boolean().optional(),
+  staleOnly: z.boolean().optional(),
+  async: z.boolean().optional(),
+  jobId: z.string().uuid().optional(),
   offset: z.number().int().nonnegative().optional(),
   limit: z.number().int().positive().max(20).optional(),
   countryId: z.number().int().positive().optional(),

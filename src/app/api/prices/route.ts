@@ -3,6 +3,7 @@ import { getCountryByIso, getPrices } from "@/lib/db";
 import { getCountryLocalCurrencies } from "@/lib/country-currency";
 import { getFxRate, getRateToSAR } from "@/lib/exchange-rates";
 import { refreshCountry } from "@/lib/pricing-service";
+import { logger } from "@/lib/logger";
 
 export const runtime = "nodejs";
 
@@ -145,6 +146,7 @@ export async function GET(request: NextRequest) {
 
     return NextResponse.json({ data: dataWithMeta });
   } catch (error) {
+    logger.error("Prices API failed", { error });
     return NextResponse.json(
       {
         error: error instanceof Error ? error.message : "Failed loading prices"

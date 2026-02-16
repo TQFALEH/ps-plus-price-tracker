@@ -29,8 +29,26 @@ export async function removeCountry(id: number) {
   await parseJson<{ ok: boolean }>(res);
 }
 
-export async function getPrices() {
-  const res = await fetch("/api/prices", { cache: "no-store" });
+export async function getPrices(params?: {
+  search?: string;
+  country?: string;
+  currency?: string;
+  tier?: string;
+  duration?: string;
+  sortBy?: string;
+  sortDir?: string;
+}) {
+  const qs = new URLSearchParams();
+  if (params?.search) qs.set("search", params.search);
+  if (params?.country) qs.set("country", params.country);
+  if (params?.currency && params.currency !== "all") qs.set("currency", params.currency);
+  if (params?.tier && params.tier !== "all") qs.set("tier", params.tier);
+  if (params?.duration && params.duration !== "all") qs.set("duration", params.duration);
+  if (params?.sortBy) qs.set("sortBy", params.sortBy);
+  if (params?.sortDir) qs.set("sortDir", params.sortDir);
+  const suffix = qs.toString() ? `?${qs.toString()}` : "";
+
+  const res = await fetch(`/api/prices${suffix}`, { cache: "no-store" });
   const json = await parseJson<{ data: PriceRecord[] }>(res);
   return json.data;
 }
@@ -47,22 +65,52 @@ export async function refreshCountry(countryId: number, force = false) {
 
 export async function refreshAll(
   force = false,
-  options?: { offset?: number; limit?: number }
+  options?: { offset?: number; limit?: number; async?: boolean; staleOnly?: boolean }
 ) {
   const res = await fetch("/api/refresh", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ all: true, force, offset: options?.offset, limit: options?.limit })
+    body: JSON.stringify({
+      all: true,
+      force,
+      offset: options?.offset,
+      limit: options?.limit,
+      async: options?.async,
+      staleOnly: options?.staleOnly
+    })
   });
   const json = await parseJson<{
+    data:
+      | {
+          jobId: string;
+          status: "queued" | "running" | "done" | "failed";
+        }
+      | {
+          total: number;
+          offset: number;
+          limit: number;
+          processed: number;
+          nextOffset: number | null;
+          done: boolean;
+          results: Array<{ countryId: number; status: string }>;
+        };
+  }>(res);
+  return json.data;
+}
+
+export async function getRefreshJob(jobId: string) {
+  const res = await fetch(`/api/refresh?jobId=${encodeURIComponent(jobId)}`, { cache: "no-store" });
+  const json = await parseJson<{
     data: {
+      id: string;
+      status: "queued" | "running" | "done" | "failed";
+      progressText: string;
+      error: string | null;
       total: number;
-      offset: number;
-      limit: number;
       processed: number;
-      nextOffset: number | null;
-      done: boolean;
-      results: Array<{ countryId: number; status: string }>;
+      ok: number;
+      cached: number;
+      failed: number;
     };
   }>(res);
   return json.data;
