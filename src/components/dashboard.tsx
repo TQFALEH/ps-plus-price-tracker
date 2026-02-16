@@ -1,7 +1,8 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import gsap from "gsap";
 import { CountryInput, PriceRecord } from "@/models";
 import {
   addCountry,
@@ -18,8 +19,10 @@ import { GameSearchSection } from "@/components/game-search-section";
 
 type SortBy = "sarPrice" | "country" | "lastUpdated";
 type SortDir = "asc" | "desc";
+type ViewMode = "subscriptions" | "games";
 
 export function Dashboard() {
+  const contentRef = useRef<HTMLDivElement | null>(null);
   const qc = useQueryClient();
   const [search, setSearch] = useState("");
   const [currency, setCurrency] = useState("all");
@@ -31,6 +34,7 @@ export function Dashboard() {
   const [refreshProgress, setRefreshProgress] = useState<string>("");
   const [error, setError] = useState<string>("");
   const [didAutoBootstrap, setDidAutoBootstrap] = useState(false);
+  const [viewMode, setViewMode] = useState<ViewMode>("subscriptions");
 
   const pricesQuery = useQuery({
     queryKey: ["prices"],
@@ -206,6 +210,15 @@ export function Dashboard() {
     })();
   }, [didAutoBootstrap, pricesQuery.isLoading, countriesQuery.isLoading, pricesQuery.data, countriesQuery.data, qc]);
 
+  useEffect(() => {
+    if (!contentRef.current) return;
+    gsap.fromTo(
+      contentRef.current,
+      { opacity: 0, y: 18, filter: "blur(6px)" },
+      { opacity: 1, y: 0, filter: "blur(0px)", duration: 0.55, ease: "power3.out" }
+    );
+  }, [viewMode]);
+
   if (pricesQuery.isLoading || countriesQuery.isLoading) {
     return <div className="p-8 text-sm text-[var(--muted)]">Loading dashboard...</div>;
   }
@@ -224,6 +237,22 @@ export function Dashboard() {
 
           <div className="flex flex-wrap items-center gap-2">
             <ThemeToggle />
+            <div className="inline-flex rounded-xl border border-[var(--border)] p-1">
+              <button
+                type="button"
+                className={viewMode === "subscriptions" ? "primary-btn !px-3 !py-1.5 !text-xs" : "soft-btn !px-3 !py-1.5 !text-xs border-transparent"}
+                onClick={() => setViewMode("subscriptions")}
+              >
+                Subscriptions
+              </button>
+              <button
+                type="button"
+                className={viewMode === "games" ? "primary-btn !px-3 !py-1.5 !text-xs" : "soft-btn !px-3 !py-1.5 !text-xs border-transparent"}
+                onClick={() => setViewMode("games")}
+              >
+                Games
+              </button>
+            </div>
             <CountryForm
               onSubmit={async (input) => {
                 await addCountryMutation.mutateAsync(input);
@@ -239,75 +268,88 @@ export function Dashboard() {
         </div>
       </header>
 
-      <section className="mb-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-        <div className="card p-4">
-          <p className="text-xs text-[var(--muted)]">Rows</p>
-          <p className="mt-1 text-2xl font-bold">{stats.rows}</p>
-        </div>
-        <div className="card p-4">
-          <p className="text-xs text-[var(--muted)]">Countries</p>
-          <p className="mt-1 text-2xl font-bold">{stats.countries}</p>
-        </div>
-        <div className="card p-4">
-          <p className="text-xs text-[var(--muted)]">Lowest SAR</p>
-          <p className="mt-1 text-2xl font-bold">{typeof stats.minSar === "number" ? stats.minSar.toFixed(2) : "-"}</p>
-        </div>
-        <div className="card p-4">
-          <p className="text-xs text-[var(--muted)]">Last Update</p>
-          <p className="mt-1 text-sm font-semibold">{stats.latest ? new Date(stats.latest).toLocaleString() : "-"}</p>
-        </div>
-      </section>
+      <div ref={contentRef}>
+        {viewMode === "subscriptions" ? (
+          <>
+            <section className="mb-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+              <div className="card p-4">
+                <p className="text-xs text-[var(--muted)]">Rows</p>
+                <p className="mt-1 text-2xl font-bold">{stats.rows}</p>
+              </div>
+              <div className="card p-4">
+                <p className="text-xs text-[var(--muted)]">Countries</p>
+                <p className="mt-1 text-2xl font-bold">{stats.countries}</p>
+              </div>
+              <div className="card p-4">
+                <p className="text-xs text-[var(--muted)]">Lowest SAR</p>
+                <p className="mt-1 text-2xl font-bold">{typeof stats.minSar === "number" ? stats.minSar.toFixed(2) : "-"}</p>
+              </div>
+              <div className="card p-4">
+                <p className="text-xs text-[var(--muted)]">Last Update</p>
+                <p className="mt-1 text-sm font-semibold">{stats.latest ? new Date(stats.latest).toLocaleString() : "-"}</p>
+              </div>
+            </section>
 
-      <section className="card mb-4 p-4">
-        <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-6">
-          <input
-            className="soft-input xl:col-span-2"
-            placeholder="Search country, ISO, tier, currency"
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-          />
+            <section className="card mb-4 p-4">
+              <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-6">
+                <input
+                  className="soft-input xl:col-span-2"
+                  placeholder="Search country, ISO, tier, currency"
+                  value={search}
+                  onChange={(e) => setSearch(e.target.value)}
+                />
 
-          <select className="soft-select" value={currency} onChange={(e) => setCurrency(e.target.value)}>
-            <option value="all">All currencies</option>
-            {currencyOptions.map((c) => (
-              <option key={c} value={c}>
-                {c}
-              </option>
-            ))}
-          </select>
+                <select className="soft-select" value={currency} onChange={(e) => setCurrency(e.target.value)}>
+                  <option value="all">All currencies</option>
+                  {currencyOptions.map((c) => (
+                    <option key={c} value={c}>
+                      {c}
+                    </option>
+                  ))}
+                </select>
 
-          <select className="soft-select" value={tier} onChange={(e) => setTier(e.target.value)}>
-            <option value="all">All tiers</option>
-            <option value="Essential">Essential</option>
-            <option value="Extra">Extra</option>
-            <option value="Premium">Premium</option>
-          </select>
+                <select className="soft-select" value={tier} onChange={(e) => setTier(e.target.value)}>
+                  <option value="all">All tiers</option>
+                  <option value="Essential">Essential</option>
+                  <option value="Extra">Extra</option>
+                  <option value="Premium">Premium</option>
+                </select>
 
-          <select className="soft-select" value={duration} onChange={(e) => setDuration(e.target.value)}>
-            <option value="all">All durations</option>
-            <option value="1">1 month</option>
-            <option value="3">3 months</option>
-            <option value="12">12 months</option>
-          </select>
+                <select className="soft-select" value={duration} onChange={(e) => setDuration(e.target.value)}>
+                  <option value="all">All durations</option>
+                  <option value="1">1 month</option>
+                  <option value="3">3 months</option>
+                  <option value="12">12 months</option>
+                </select>
 
-          <div className="flex gap-2">
-            <select className="soft-select flex-1" value={sortBy} onChange={(e) => setSortBy(e.target.value as SortBy)}>
-              <option value="country">Sort: Country</option>
-              <option value="sarPrice">Sort: Saudi Price</option>
-              <option value="lastUpdated">Sort: Updated</option>
-            </select>
-            <button
-              type="button"
-              className="soft-btn whitespace-nowrap"
-              onClick={() => setSortDir((prev) => (prev === "asc" ? "desc" : "asc"))}
-            >
-              {sortDir === "asc" ? "Low->High" : "High->Low"}
-            </button>
-          </div>
-        </div>
-      </section>
+                <div className="flex gap-2">
+                  <select className="soft-select flex-1" value={sortBy} onChange={(e) => setSortBy(e.target.value as SortBy)}>
+                    <option value="country">Sort: Country</option>
+                    <option value="sarPrice">Sort: Saudi Price</option>
+                    <option value="lastUpdated">Sort: Updated</option>
+                  </select>
+                  <button
+                    type="button"
+                    className="soft-btn whitespace-nowrap"
+                    onClick={() => setSortDir((prev) => (prev === "asc" ? "desc" : "asc"))}
+                  >
+                    {sortDir === "asc" ? "Low->High" : "High->Low"}
+                  </button>
+                </div>
+              </div>
+            </section>
 
-      <GameSearchSection />
+            <PriceTable
+              rows={rows}
+              refreshingCountryId={refreshingCountryId}
+              onRefreshCountry={handleRefreshCountry}
+              onDeleteCountry={handleDeleteCountry}
+            />
+          </>
+        ) : (
+          <GameSearchSection />
+        )}
+      </div>
 
       {refreshProgress ? (
         <p className="mb-3 inline-flex rounded-full border border-sky-200 bg-sky-100/60 px-3 py-1 text-xs font-semibold text-sky-700 dark:border-sky-900 dark:bg-sky-900/20 dark:text-sky-300">
@@ -321,12 +363,6 @@ export function Dashboard() {
         </p>
       ) : null}
 
-      <PriceTable
-        rows={rows}
-        refreshingCountryId={refreshingCountryId}
-        onRefreshCountry={handleRefreshCountry}
-        onDeleteCountry={handleDeleteCountry}
-      />
     </main>
   );
 }
