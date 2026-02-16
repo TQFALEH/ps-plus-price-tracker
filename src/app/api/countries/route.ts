@@ -7,16 +7,25 @@ import { logger } from "@/lib/logger";
 export const runtime = "nodejs";
 
 export async function GET() {
-  const discovered = await discoverSupportedCountries();
-  if (discovered.length > 0) {
-    const inserted = insertCountriesIfMissing(discovered);
-    if (inserted > 0) {
-      logger.info("Synced discovered countries from official source", { inserted });
+  try {
+    const discovered = await discoverSupportedCountries();
+    if (discovered.length > 0) {
+      const inserted = insertCountriesIfMissing(discovered);
+      if (inserted > 0) {
+        logger.info("Synced discovered countries from official source", { inserted });
+      }
     }
+  } catch (error) {
+    logger.warn("Country discovery sync failed, continuing with existing data", { error });
   }
 
-  const data = listCountries();
-  return NextResponse.json({ data });
+  try {
+    const data = listCountries();
+    return NextResponse.json({ data });
+  } catch (error) {
+    logger.error("Failed listing countries", { error });
+    return NextResponse.json({ error: "Failed loading countries from database" }, { status: 500 });
+  }
 }
 
 export async function POST(request: NextRequest) {

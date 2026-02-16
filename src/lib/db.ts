@@ -4,7 +4,20 @@ import path from "node:path";
 import { Country, CountryInput, DurationMonths, PriceRecord, Tier } from "@/models";
 import { nowIso } from "@/lib/utils";
 
-const dbPath = process.env.DATABASE_PATH ?? "./data/ps-plus.db";
+function resolveDatabasePath() {
+  if (process.env.DATABASE_PATH) {
+    return process.env.DATABASE_PATH;
+  }
+
+  // Most serverless platforms allow writes only under /tmp.
+  if (process.env.VERCEL || process.env.AWS_LAMBDA_FUNCTION_NAME || process.env.K_SERVICE) {
+    return "/tmp/ps-plus.db";
+  }
+
+  return "./data/ps-plus.db";
+}
+
+const dbPath = resolveDatabasePath();
 const absoluteDbPath = path.isAbsolute(dbPath) ? dbPath : path.join(process.cwd(), dbPath);
 
 fs.mkdirSync(path.dirname(absoluteDbPath), { recursive: true });
