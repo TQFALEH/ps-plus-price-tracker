@@ -137,7 +137,9 @@ export async function GET(request: NextRequest) {
 
       return {
         ...row,
-        sarPrice: isLocalCurrency ? sarFromSource : (sarFromLocalEstimate ?? sarFromSource),
+        // Always prioritize converting from the actual store currency shown by PlayStation.
+        // If that FX rate is unavailable, fallback to local-estimate->SAR.
+        sarPrice: sarFromSource ?? sarFromLocalEstimate,
         isLocalCurrency,
         localCurrencyCodes: localCodes,
         localEstimatedPrice
