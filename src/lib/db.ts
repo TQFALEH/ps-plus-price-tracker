@@ -1,15 +1,15 @@
-import Database from "better-sqlite3";
 import fs from "node:fs";
 import path from "node:path";
+import { createRequire } from "node:module";
 import { Country, CountryInput, DurationMonths, PriceRecord, Tier } from "@/models";
 import { nowIso } from "@/lib/utils";
+import { logger } from "@/lib/logger";
 
 function resolveDatabasePath() {
   if (process.env.DATABASE_PATH) {
     return process.env.DATABASE_PATH;
   }
 
-  // Most serverless platforms allow writes only under /tmp.
   if (process.env.VERCEL || process.env.AWS_LAMBDA_FUNCTION_NAME || process.env.K_SERVICE) {
     return "/tmp/ps-plus.db";
   }
@@ -17,15 +17,50 @@ function resolveDatabasePath() {
   return "./data/ps-plus.db";
 }
 
+function resolveJsonFallbackPath(dbAbsPath: string) {
+  if (dbAbsPath.endsWith(".db")) {
+    return dbAbsPath.replace(/\.db$/, ".json");
+  }
+  return `${dbAbsPath}.json`;
+}
+
+const defaultCountries: CountryInput[] = [
+  { name: "United States", isoCode: "US", regionIdentifier: "en-us", sourceUrl: "https://www.playstation.com/en-us/ps-plus/" },
+  { name: "United Kingdom", isoCode: "GB", regionIdentifier: "en-gb", sourceUrl: "https://www.playstation.com/en-gb/ps-plus/" },
+  { name: "Canada", isoCode: "CA", regionIdentifier: "en-ca", sourceUrl: "https://www.playstation.com/en-ca/ps-plus/" },
+  { name: "Japan", isoCode: "JP", regionIdentifier: "ja-jp", sourceUrl: "https://www.playstation.com/ja-jp/ps-plus/" },
+  { name: "Germany", isoCode: "DE", regionIdentifier: "de-de", sourceUrl: "https://www.playstation.com/de-de/ps-plus/" },
+  { name: "France", isoCode: "FR", regionIdentifier: "fr-fr", sourceUrl: "https://www.playstation.com/fr-fr/ps-plus/" },
+  { name: "Spain", isoCode: "ES", regionIdentifier: "es-es", sourceUrl: "https://www.playstation.com/es-es/ps-plus/" },
+  { name: "Italy", isoCode: "IT", regionIdentifier: "it-it", sourceUrl: "https://www.playstation.com/it-it/ps-plus/" },
+  { name: "Australia", isoCode: "AU", regionIdentifier: "en-au", sourceUrl: "https://www.playstation.com/en-au/ps-plus/" },
+  { name: "Brazil", isoCode: "BR", regionIdentifier: "pt-br", sourceUrl: "https://www.playstation.com/pt-br/ps-plus/" }
+];
+
+type DbLike = {
+  prepare: (sql: string) => {
+    get: (...args: unknown[]) => unknown;
+    all: (...args: unknown[]) => unknown[];
+    run: (...args: unknown[]) => { changes: number; lastInsertRowid: number | bigint };
+  };
+  pragma: (sql: string) => void;
+  exec: (sql: string) => void;
+  transaction: <T extends unknown[]>(fn: (...args: T) => void) => (...args: T) => void;
+};
+
 const dbPath = resolveDatabasePath();
 const absoluteDbPath = path.isAbsolute(dbPath) ? dbPath : path.join(process.cwd(), dbPath);
-
 fs.mkdirSync(path.dirname(absoluteDbPath), { recursive: true });
 
-const db = new Database(absoluteDbPath);
-db.pragma("journal_mode = WAL");
+let db: DbLike | null = null;
 
-db.exec(`
+try {
+  const require = createRequire(import.meta.url);
+  const BetterSqlite3 = require("better-sqlite3") as new (filename: string) => DbLike;
+  db = new BetterSqlite3(absoluteDbPath);
+  db.pragma("journal_mode = WAL");
+
+  db.exec(`
 CREATE TABLE IF NOT EXISTS countries (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   name TEXT NOT NULL,
@@ -51,31 +86,100 @@ CREATE TABLE IF NOT EXISTS prices (
 );
 `);
 
-const defaultCountries: CountryInput[] = [
-  { name: "United States", isoCode: "US", regionIdentifier: "en-us", sourceUrl: "https://www.playstation.com/en-us/ps-plus/" },
-  { name: "United Kingdom", isoCode: "GB", regionIdentifier: "en-gb", sourceUrl: "https://www.playstation.com/en-gb/ps-plus/" },
-  { name: "Canada", isoCode: "CA", regionIdentifier: "en-ca", sourceUrl: "https://www.playstation.com/en-ca/ps-plus/" },
-  { name: "Japan", isoCode: "JP", regionIdentifier: "ja-jp", sourceUrl: "https://www.playstation.com/ja-jp/ps-plus/" },
-  { name: "Germany", isoCode: "DE", regionIdentifier: "de-de", sourceUrl: "https://www.playstation.com/de-de/ps-plus/" },
-  { name: "France", isoCode: "FR", regionIdentifier: "fr-fr", sourceUrl: "https://www.playstation.com/fr-fr/ps-plus/" },
-  { name: "Spain", isoCode: "ES", regionIdentifier: "es-es", sourceUrl: "https://www.playstation.com/es-es/ps-plus/" },
-  { name: "Italy", isoCode: "IT", regionIdentifier: "it-it", sourceUrl: "https://www.playstation.com/it-it/ps-plus/" },
-  { name: "Australia", isoCode: "AU", regionIdentifier: "en-au", sourceUrl: "https://www.playstation.com/en-au/ps-plus/" },
-  { name: "Brazil", isoCode: "BR", regionIdentifier: "pt-br", sourceUrl: "https://www.playstation.com/pt-br/ps-plus/" }
-];
+  const existingCount = db.prepare("SELECT COUNT(*) as count FROM countries").get() as { count: number };
+  if (existingCount.count === 0) {
+    const insert = db.prepare(
+      "INSERT INTO countries (name, iso_code, region_identifier, source_url, created_at, updated_at) VALUES (@name, @isoCode, @regionIdentifier, @sourceUrl, @createdAt, @updatedAt)"
+    );
+    const ts = nowIso();
+    const tx = db.transaction((items: CountryInput[]) => {
+      for (const c of items) {
+        insert.run({ ...c, createdAt: ts, updatedAt: ts, sourceUrl: c.sourceUrl ?? null });
+      }
+    });
+    tx(defaultCountries);
+  }
+} catch (error) {
+  db = null;
+  logger.warn("SQLite unavailable, using JSON fallback store", { error });
+}
 
-const existingCount = db.prepare("SELECT COUNT(*) as count FROM countries").get() as { count: number };
-if (existingCount.count === 0) {
-  const insert = db.prepare(
-    "INSERT INTO countries (name, iso_code, region_identifier, source_url, created_at, updated_at) VALUES (@name, @isoCode, @regionIdentifier, @sourceUrl, @createdAt, @updatedAt)"
-  );
+type MemoryCountry = Country;
+type MemoryPrice = PriceRecord & { cacheExpiresAt: string };
+
+type MemoryStore = {
+  nextCountryId: number;
+  nextPriceId: number;
+  countries: MemoryCountry[];
+  prices: MemoryPrice[];
+};
+
+const fallbackFile = resolveJsonFallbackPath(absoluteDbPath);
+let memoryStore: MemoryStore | null = null;
+
+function seedDefaultCountriesInMemory() {
   const ts = nowIso();
-  const tx = db.transaction((items: CountryInput[]) => {
-    for (const c of items) {
-      insert.run({ ...c, createdAt: ts, updatedAt: ts, sourceUrl: c.sourceUrl ?? null });
+  if (!memoryStore) {
+    return;
+  }
+  for (const c of defaultCountries) {
+    memoryStore.countries.push({
+      id: memoryStore.nextCountryId++,
+      name: c.name,
+      isoCode: c.isoCode,
+      regionIdentifier: c.regionIdentifier,
+      sourceUrl: c.sourceUrl ?? null,
+      createdAt: ts,
+      updatedAt: ts
+    });
+  }
+}
+
+function loadMemoryStore(): MemoryStore {
+  if (memoryStore) {
+    return memoryStore;
+  }
+
+  try {
+    if (fs.existsSync(fallbackFile)) {
+      const raw = fs.readFileSync(fallbackFile, "utf8");
+      const parsed = JSON.parse(raw) as MemoryStore;
+      memoryStore = parsed;
+    } else {
+      memoryStore = {
+        nextCountryId: 1,
+        nextPriceId: 1,
+        countries: [],
+        prices: []
+      };
     }
-  });
-  tx(defaultCountries);
+  } catch (error) {
+    logger.error("Failed reading fallback DB file, resetting memory store", { error });
+    memoryStore = {
+      nextCountryId: 1,
+      nextPriceId: 1,
+      countries: [],
+      prices: []
+    };
+  }
+
+  if (memoryStore.countries.length === 0) {
+    seedDefaultCountriesInMemory();
+    persistMemoryStore();
+  }
+
+  return memoryStore;
+}
+
+function persistMemoryStore() {
+  if (!memoryStore) {
+    return;
+  }
+  try {
+    fs.writeFileSync(fallbackFile, JSON.stringify(memoryStore));
+  } catch (error) {
+    logger.error("Failed writing fallback DB file", { error });
+  }
 }
 
 function mapCountry(row: Record<string, unknown>): Country {
@@ -91,21 +195,60 @@ function mapCountry(row: Record<string, unknown>): Country {
 }
 
 export function listCountries(): Country[] {
+  if (!db) {
+    const store = loadMemoryStore();
+    return [...store.countries].sort((a, b) => a.name.localeCompare(b.name));
+  }
+
   const rows = db.prepare("SELECT * FROM countries ORDER BY name ASC").all() as Record<string, unknown>[];
   return rows.map(mapCountry);
 }
 
 export function getCountryById(id: number): Country | null {
+  if (!db) {
+    const store = loadMemoryStore();
+    return store.countries.find((c) => c.id === id) ?? null;
+  }
+
   const row = db.prepare("SELECT * FROM countries WHERE id = ?").get(id) as Record<string, unknown> | undefined;
   return row ? mapCountry(row) : null;
 }
 
 export function getCountryByIso(isoCode: string): Country | null {
+  if (!db) {
+    const store = loadMemoryStore();
+    const target = isoCode.toUpperCase();
+    return store.countries.find((c) => c.isoCode.toUpperCase() === target) ?? null;
+  }
+
   const row = db.prepare("SELECT * FROM countries WHERE iso_code = ?").get(isoCode) as Record<string, unknown> | undefined;
   return row ? mapCountry(row) : null;
 }
 
 export function insertCountry(input: CountryInput): Country {
+  if (!db) {
+    const store = loadMemoryStore();
+    const targetIso = input.isoCode.toUpperCase();
+    const exists = store.countries.some((c) => c.isoCode.toUpperCase() === targetIso);
+    if (exists) {
+      throw { code: "SQLITE_CONSTRAINT_UNIQUE", message: "Country with this ISO code already exists" };
+    }
+
+    const ts = nowIso();
+    const created: Country = {
+      id: store.nextCountryId++,
+      name: input.name,
+      isoCode: targetIso,
+      regionIdentifier: input.regionIdentifier,
+      sourceUrl: input.sourceUrl ?? null,
+      createdAt: ts,
+      updatedAt: ts
+    };
+    store.countries.push(created);
+    persistMemoryStore();
+    return created;
+  }
+
   const ts = nowIso();
   const stmt = db.prepare(
     "INSERT INTO countries (name, iso_code, region_identifier, source_url, created_at, updated_at) VALUES (@name, @isoCode, @regionIdentifier, @sourceUrl, @createdAt, @updatedAt)"
@@ -120,6 +263,36 @@ export function insertCountry(input: CountryInput): Country {
 }
 
 export function insertCountriesIfMissing(inputs: CountryInput[]): number {
+  if (!db) {
+    const store = loadMemoryStore();
+    const ts = nowIso();
+    let inserted = 0;
+
+    for (const row of inputs) {
+      const targetIso = row.isoCode.toUpperCase();
+      const exists = store.countries.some((c) => c.isoCode.toUpperCase() === targetIso);
+      if (exists) {
+        continue;
+      }
+
+      store.countries.push({
+        id: store.nextCountryId++,
+        name: row.name,
+        isoCode: targetIso,
+        regionIdentifier: row.regionIdentifier,
+        sourceUrl: row.sourceUrl ?? null,
+        createdAt: ts,
+        updatedAt: ts
+      });
+      inserted += 1;
+    }
+
+    if (inserted > 0) {
+      persistMemoryStore();
+    }
+    return inserted;
+  }
+
   const stmt = db.prepare(
     "INSERT OR IGNORE INTO countries (name, iso_code, region_identifier, source_url, created_at, updated_at) VALUES (@name, @isoCode, @regionIdentifier, @sourceUrl, @createdAt, @updatedAt)"
   );
@@ -143,6 +316,18 @@ export function insertCountriesIfMissing(inputs: CountryInput[]): number {
 }
 
 export function deleteCountry(id: number): boolean {
+  if (!db) {
+    const store = loadMemoryStore();
+    const countryBefore = store.countries.length;
+    store.countries = store.countries.filter((c) => c.id !== id);
+    if (store.countries.length === countryBefore) {
+      return false;
+    }
+    store.prices = store.prices.filter((p) => p.countryId !== id);
+    persistMemoryStore();
+    return true;
+  }
+
   const res = db.prepare("DELETE FROM countries WHERE id = ?").run(id);
   return res.changes > 0;
 }
@@ -159,6 +344,46 @@ export interface UpsertPriceInput {
 }
 
 export function upsertPrices(entries: UpsertPriceInput[]) {
+  if (!db) {
+    const store = loadMemoryStore();
+
+    for (const row of entries) {
+      const idx = store.prices.findIndex(
+        (p) => p.countryId === row.countryId && p.tier === row.tier && p.durationMonths === row.durationMonths
+      );
+
+      if (idx >= 0) {
+        const prev = store.prices[idx];
+        store.prices[idx] = {
+          ...prev,
+          currency: row.currency,
+          price: row.price,
+          sourceUrl: row.sourceUrl ?? null,
+          lastUpdated: row.lastUpdated,
+          cacheExpiresAt: row.cacheExpiresAt
+        };
+      } else {
+        const country = store.countries.find((c) => c.id === row.countryId);
+        store.prices.push({
+          id: store.nextPriceId++,
+          countryId: row.countryId,
+          countryName: country?.name ?? "Unknown",
+          isoCode: country?.isoCode ?? "",
+          currency: row.currency,
+          tier: row.tier,
+          durationMonths: row.durationMonths,
+          price: row.price,
+          sourceUrl: row.sourceUrl ?? null,
+          lastUpdated: row.lastUpdated,
+          cacheExpiresAt: row.cacheExpiresAt
+        });
+      }
+    }
+
+    persistMemoryStore();
+    return;
+  }
+
   const stmt = db.prepare(`
     INSERT INTO prices (country_id, currency, tier, duration_months, price, source_url, last_updated, cache_expires_at)
     VALUES (@countryId, @currency, @tier, @durationMonths, @price, @sourceUrl, @lastUpdated, @cacheExpiresAt)
@@ -189,6 +414,66 @@ export function getPrices(filters?: {
   sortBy?: "price" | "country" | "lastUpdated";
   sortDir?: "asc" | "desc";
 }): PriceRecord[] {
+  if (!db) {
+    const store = loadMemoryStore();
+    const targetCountry = filters?.country?.toUpperCase();
+    const currency = filters?.currency;
+    const tier = filters?.tier;
+    const duration = filters?.duration;
+    const search = filters?.search?.toLowerCase();
+
+    let rows = store.prices.filter((p) => {
+      if (targetCountry && p.isoCode.toUpperCase() !== targetCountry) {
+        return false;
+      }
+      if (currency && p.currency !== currency) {
+        return false;
+      }
+      if (tier && p.tier !== tier) {
+        return false;
+      }
+      if (duration && p.durationMonths !== duration) {
+        return false;
+      }
+      if (
+        search &&
+        !(p.countryName.toLowerCase().includes(search) ||
+          p.isoCode.toLowerCase().includes(search) ||
+          p.currency.toLowerCase().includes(search) ||
+          p.tier.toLowerCase().includes(search))
+      ) {
+        return false;
+      }
+      return true;
+    });
+
+    const sortBy = filters?.sortBy ?? "country";
+    const factor = filters?.sortDir === "desc" ? -1 : 1;
+
+    rows = rows.sort((a, b) => {
+      if (sortBy === "price") {
+        return (a.price - b.price) * factor;
+      }
+      if (sortBy === "lastUpdated") {
+        return a.lastUpdated.localeCompare(b.lastUpdated) * factor;
+      }
+      return a.countryName.localeCompare(b.countryName) * factor;
+    });
+
+    return rows.map((row) => ({
+      id: row.id,
+      countryId: row.countryId,
+      countryName: row.countryName,
+      isoCode: row.isoCode,
+      currency: row.currency,
+      tier: row.tier,
+      durationMonths: row.durationMonths,
+      price: row.price,
+      lastUpdated: row.lastUpdated,
+      sourceUrl: row.sourceUrl
+    }));
+  }
+
   const where: string[] = [];
   const params: Record<string, unknown> = {};
 
@@ -260,6 +545,24 @@ export function getPrices(filters?: {
 }
 
 export function getCountryPriceSnapshot(countryId: number) {
+  if (!db) {
+    const store = loadMemoryStore();
+    return store.prices
+      .filter((p) => p.countryId === countryId)
+      .sort((a, b) => a.tier.localeCompare(b.tier) || a.durationMonths - b.durationMonths)
+      .map((p) => ({
+        id: p.id,
+        country_id: p.countryId,
+        currency: p.currency,
+        tier: p.tier,
+        duration_months: p.durationMonths,
+        price: p.price,
+        source_url: p.sourceUrl,
+        last_updated: p.lastUpdated,
+        cache_expires_at: p.cacheExpiresAt
+      }));
+  }
+
   return db
     .prepare(
       "SELECT * FROM prices WHERE country_id = ? ORDER BY tier ASC, duration_months ASC"
@@ -268,6 +571,17 @@ export function getCountryPriceSnapshot(countryId: number) {
 }
 
 export function areCountryPricesFresh(countryId: number, now = nowIso()) {
+  if (!db) {
+    const store = loadMemoryStore();
+    const entries = store.prices.filter((p) => p.countryId === countryId);
+    if (entries.length === 0) {
+      return false;
+    }
+
+    const minExpiry = entries.reduce((min, curr) => (curr.cacheExpiresAt < min ? curr.cacheExpiresAt : min), entries[0].cacheExpiresAt);
+    return minExpiry > now;
+  }
+
   const row = db
     .prepare(
       "SELECT MIN(cache_expires_at) as min_expiry, COUNT(*) as count FROM prices WHERE country_id = ?"
