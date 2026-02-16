@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import gsap from "gsap";
+import { Globe, Layers, Sparkles, Timer } from "lucide-react";
 import { CountryInput, PriceRecord } from "@/models";
 import {
   addCountry,
@@ -24,10 +25,12 @@ type SortDir = "asc" | "desc";
 type ViewMode = "subscriptions" | "games";
 
 export function Dashboard() {
+  const shellRef = useRef<HTMLDivElement | null>(null);
   const contentRef = useRef<HTMLDivElement | null>(null);
   const { language } = useLanguage();
   const isAr = language === "ar";
   const qc = useQueryClient();
+
   const [search, setSearch] = useState("");
   const [currency, setCurrency] = useState("all");
   const [tier, setTier] = useState("all");
@@ -39,6 +42,82 @@ export function Dashboard() {
   const [error, setError] = useState<string>("");
   const [didAutoBootstrap, setDidAutoBootstrap] = useState(false);
   const [viewMode, setViewMode] = useState<ViewMode>("subscriptions");
+
+  const copy = isAr
+    ? {
+        badge: "لوحة ذكية",
+        title: "PlayStation Plus Price Tracker",
+        subtitle: "مركز موحّد لمقارنة الأسعار عالميًا مع تحويل دقيق إلى الريال السعودي.",
+        subscriptions: "الاشتراكات",
+        games: "الألعاب",
+        refreshClient: "تحديث الكل (محلي)",
+        refreshServer: "تحديث الكل (سيرفر)",
+        loading: "جاري تحميل اللوحة...",
+        rows: "عدد الصفوف",
+        countries: "عدد الدول",
+        minSar: "أقل سعر SAR",
+        lastUpdate: "آخر تحديث",
+        searchPlaceholder: "ابحث بالدولة أو ISO أو الباقة أو العملة",
+        allCurrencies: "كل العملات",
+        allTiers: "كل الباقات",
+        tierEssential: "أساسي",
+        tierExtra: "إكسترا",
+        tierPremium: "بريميوم",
+        allDurations: "كل المدد",
+        oneMonth: "شهر",
+        threeMonths: "3 أشهر",
+        twelveMonths: "12 شهر",
+        sortCountry: "ترتيب: الدولة",
+        sortSar: "ترتيب: سعر SAR",
+        sortUpdated: "ترتيب: آخر تحديث",
+        lowHigh: "من الأقل للأعلى",
+        highLow: "من الأعلى للأقل",
+        done: "تم",
+        refreshAll: "تحديث كل الدول...",
+        initialSync: "بدء المزامنة الأولى...",
+        syncLabel: "مزامنة",
+        refreshFailed: "فشل تحديث الكل",
+        initialSyncFailed: "فشلت المزامنة الأولى",
+        deleteFailed: "فشل الحذف",
+        singleRefreshFailed: "فشل تحديث الدولة"
+      }
+    : {
+        badge: "Intelligence Hub",
+        title: "PlayStation Plus Price Tracker",
+        subtitle: "A unified command center for global price comparison with precise SAR conversion.",
+        subscriptions: "Subscriptions",
+        games: "Games",
+        refreshClient: "Refresh All (client)",
+        refreshServer: "Refresh All (server)",
+        loading: "Loading dashboard...",
+        rows: "Rows",
+        countries: "Countries",
+        minSar: "Lowest SAR",
+        lastUpdate: "Last Update",
+        searchPlaceholder: "Search by country, ISO, tier, or currency",
+        allCurrencies: "All currencies",
+        allTiers: "All tiers",
+        tierEssential: "Essential",
+        tierExtra: "Extra",
+        tierPremium: "Premium",
+        allDurations: "All durations",
+        oneMonth: "1 month",
+        threeMonths: "3 months",
+        twelveMonths: "12 months",
+        sortCountry: "Sort: Country",
+        sortSar: "Sort: Saudi Price",
+        sortUpdated: "Sort: Updated",
+        lowHigh: "Low->High",
+        highLow: "High->Low",
+        done: "Done",
+        refreshAll: "Refreshing all countries...",
+        initialSync: "First sync started...",
+        syncLabel: "First sync",
+        refreshFailed: "Refresh all failed",
+        initialSyncFailed: "Initial sync failed",
+        deleteFailed: "Delete failed",
+        singleRefreshFailed: "Refresh failed"
+      };
 
   const pricesQuery = useQuery({
     queryKey: ["prices"],
@@ -66,9 +145,7 @@ export function Dashboard() {
     const searched = rows.filter((row) => {
       if (search) {
         const target = `${row.countryName} ${row.isoCode} ${row.currency} ${row.tier}`.toLowerCase();
-        if (!target.includes(search.toLowerCase())) {
-          return false;
-        }
+        if (!target.includes(search.toLowerCase())) return false;
       }
       if (currency !== "all" && row.currency !== currency) return false;
       if (tier !== "all" && row.tier !== tier) return false;
@@ -92,8 +169,7 @@ export function Dashboard() {
   }, [pricesQuery.data, search, currency, tier, duration, sortBy, sortDir]);
 
   const currencyOptions = useMemo(() => {
-    const set = new Set((pricesQuery.data ?? []).map((r) => r.currency));
-    return Array.from(set).sort();
+    return Array.from(new Set((pricesQuery.data ?? []).map((r) => r.currency))).sort();
   }, [pricesQuery.data]);
 
   const stats = useMemo(() => {
@@ -123,7 +199,7 @@ export function Dashboard() {
         qc.invalidateQueries({ queryKey: ["prices"] })
       ]);
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Delete failed");
+      setError(e instanceof Error ? e.message : copy.deleteFailed);
     }
   }
 
@@ -134,7 +210,7 @@ export function Dashboard() {
       await refreshCountry(countryId, true);
       await qc.invalidateQueries({ queryKey: ["prices"] });
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Refresh failed");
+      setError(e instanceof Error ? e.message : copy.singleRefreshFailed);
     } finally {
       setRefreshingCountryId(null);
     }
@@ -146,15 +222,11 @@ export function Dashboard() {
 
     for (let i = 0; i < countries.length; i += 1) {
       const c = countries[i];
-      setRefreshProgress(
-        isAr
-          ? `تحديث ${c.isoCode} (${i + 1}/${countries.length})`
-          : `Refreshing ${c.isoCode} (${i + 1}/${countries.length})`
-      );
+      setRefreshProgress(`${copy.syncLabel} ${c.isoCode} (${i + 1}/${countries.length})`);
       await refreshCountry(c.id, true);
     }
 
-    setRefreshProgress(isAr ? "تم" : "Done");
+    setRefreshProgress(copy.done);
     await qc.invalidateQueries({ queryKey: ["prices"] });
     setTimeout(() => setRefreshProgress(""), 1200);
   }
@@ -176,17 +248,28 @@ export function Dashboard() {
 
   async function handleSmartRefreshAll() {
     setError("");
-    setRefreshProgress(isAr ? "تحديث كل الدول..." : "Refreshing all countries...");
+    setRefreshProgress(copy.refreshAll);
     try {
-      await runBatchedRefresh("Refreshing");
+      await runBatchedRefresh(copy.syncLabel);
       await qc.invalidateQueries({ queryKey: ["prices"] });
-      setRefreshProgress(isAr ? "تم" : "Done");
+      setRefreshProgress(copy.done);
       setTimeout(() => setRefreshProgress(""), 1200);
     } catch (e) {
-      setError(e instanceof Error ? e.message : isAr ? "فشل تحديث الكل" : "Refresh all failed");
+      setError(e instanceof Error ? e.message : copy.refreshFailed);
       setRefreshProgress("");
     }
   }
+
+  useEffect(() => {
+    if (!shellRef.current) return;
+
+    const tl = gsap.timeline();
+    tl.fromTo(
+      shellRef.current.querySelectorAll("[data-hero-item]"),
+      { opacity: 0, y: 24, filter: "blur(6px)" },
+      { opacity: 1, y: 0, filter: "blur(0px)", duration: 0.7, stagger: 0.08, ease: "power3.out" }
+    );
+  }, []);
 
   useEffect(() => {
     if (didAutoBootstrap) return;
@@ -203,183 +286,168 @@ export function Dashboard() {
 
     setDidAutoBootstrap(true);
     setError("");
-    setRefreshProgress(isAr ? "بدء المزامنة الأولى..." : "First sync started...");
+    setRefreshProgress(copy.initialSync);
 
     void (async () => {
       try {
-        await runBatchedRefresh(isAr ? "مزامنة" : "First sync");
+        await runBatchedRefresh(copy.syncLabel);
         await qc.invalidateQueries({ queryKey: ["prices"] });
-        setRefreshProgress(isAr ? "تم" : "Done");
+        setRefreshProgress(copy.done);
         setTimeout(() => setRefreshProgress(""), 1200);
       } catch (e) {
-        setError(e instanceof Error ? e.message : isAr ? "فشلت المزامنة الأولى" : "Initial sync failed");
+        setError(e instanceof Error ? e.message : copy.initialSyncFailed);
         setRefreshProgress("");
       }
     })();
-  }, [didAutoBootstrap, pricesQuery.isLoading, countriesQuery.isLoading, pricesQuery.data, countriesQuery.data, qc, isAr]);
+  }, [didAutoBootstrap, pricesQuery.isLoading, countriesQuery.isLoading, pricesQuery.data, countriesQuery.data, qc, copy.initialSync, copy.syncLabel, copy.done, copy.initialSyncFailed]);
 
   useEffect(() => {
     if (!contentRef.current) return;
     gsap.fromTo(
       contentRef.current,
-      { opacity: 0, y: 18, filter: "blur(6px)" },
+      { opacity: 0, y: 18, filter: "blur(8px)" },
       { opacity: 1, y: 0, filter: "blur(0px)", duration: 0.55, ease: "power3.out" }
     );
   }, [viewMode]);
 
   if (pricesQuery.isLoading || countriesQuery.isLoading) {
-    return <div className="p-8 text-sm text-[var(--muted)]">{isAr ? "جاري تحميل اللوحة..." : "Loading dashboard..."}</div>;
+    return <div className="p-8 text-sm text-[var(--muted)]">{copy.loading}</div>;
   }
 
   const rows = filteredRows as PriceRecord[];
 
   return (
-    <main className="mx-auto max-w-[1500px] px-3 py-6 sm:px-6 lg:px-8">
-      <header className="mb-5 card p-4 sm:p-5">
-        <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
-          <div>
-            <p className="text-[11px] uppercase tracking-[0.16em] text-[var(--muted)]">
-              {isAr ? "ذكاء بلايستيشن" : "PlayStation Intelligence"}
-            </p>
-            <h1 className="mt-1 text-2xl font-bold sm:text-3xl">
-              {isAr ? "متتبع أسعار بلايستيشن بلس" : "PlayStation Plus Price Tracker"}
-            </h1>
-            <p className="mt-1 text-sm text-[var(--muted)]">
-              {isAr
-                ? "أسعار المناطق مباشرة مع توحيد العملات والتحويل الذكي إلى الريال السعودي."
-                : "Live regional prices, smart currency normalization, and Saudi conversion."}
-            </p>
+    <main ref={shellRef} className="neo-shell mx-auto max-w-[1600px] px-3 py-5 sm:px-6 lg:px-8">
+      <div className="neo-layout">
+        <aside className="neo-sidebar card" data-hero-item>
+          <span className="neo-kicker">{copy.badge}</span>
+          <h1 className="neo-title">{copy.title}</h1>
+          <p className="neo-copy">{copy.subtitle}</p>
+
+          <div className="neo-switch">
+            <button
+              type="button"
+              className={viewMode === "subscriptions" ? "primary-btn !w-full !text-xs" : "soft-btn !w-full !text-xs"}
+              onClick={() => setViewMode("subscriptions")}
+            >
+              {copy.subscriptions}
+            </button>
+            <button
+              type="button"
+              className={viewMode === "games" ? "primary-btn !w-full !text-xs" : "soft-btn !w-full !text-xs"}
+              onClick={() => setViewMode("games")}
+            >
+              {copy.games}
+            </button>
           </div>
 
-          <div className="flex flex-wrap items-center gap-2">
+          <div className="neo-tools">
             <ThemeToggle />
             <LanguageToggle />
-            <div className="inline-flex rounded-xl border border-[var(--border)] p-1">
-              <button
-                type="button"
-                className={viewMode === "subscriptions" ? "primary-btn !px-3 !py-1.5 !text-xs" : "soft-btn !px-3 !py-1.5 !text-xs border-transparent"}
-                onClick={() => setViewMode("subscriptions")}
-              >
-                {isAr ? "الاشتراكات" : "Subscriptions"}
-              </button>
-              <button
-                type="button"
-                className={viewMode === "games" ? "primary-btn !px-3 !py-1.5 !text-xs" : "soft-btn !px-3 !py-1.5 !text-xs border-transparent"}
-                onClick={() => setViewMode("games")}
-              >
-                {isAr ? "الألعاب" : "Games"}
-              </button>
-            </div>
+          </div>
+
+          <div className="neo-quick-grid">
+            <article className="neo-mini-card">
+              <span><Layers size={14} /> {copy.rows}</span>
+              <strong>{stats.rows}</strong>
+            </article>
+            <article className="neo-mini-card">
+              <span><Globe size={14} /> {copy.countries}</span>
+              <strong>{stats.countries}</strong>
+            </article>
+            <article className="neo-mini-card">
+              <span><Sparkles size={14} /> {copy.minSar}</span>
+              <strong>{typeof stats.minSar === "number" ? stats.minSar.toFixed(2) : "-"}</strong>
+            </article>
+            <article className="neo-mini-card">
+              <span><Timer size={14} /> {copy.lastUpdate}</span>
+              <strong className="!text-xs">{stats.latest ? new Date(stats.latest).toLocaleString() : "-"}</strong>
+            </article>
+          </div>
+        </aside>
+
+        <section ref={contentRef} className="neo-content">
+          <div className="neo-actions card">
             <CountryForm
               onSubmit={async (input) => {
                 await addCountryMutation.mutateAsync(input);
               }}
             />
             <button type="button" onClick={handleRefreshAll} className="soft-btn">
-              {isAr ? "تحديث الكل (محلي)" : "Refresh All (client)"}
+              {copy.refreshClient}
             </button>
             <button type="button" onClick={handleSmartRefreshAll} className="primary-btn">
-              {isAr ? "تحديث الكل (سيرفر)" : "Refresh All (server)"}
+              {copy.refreshServer}
             </button>
           </div>
-        </div>
-      </header>
 
-      <div ref={contentRef}>
-        {viewMode === "subscriptions" ? (
-          <>
-            <section className="mb-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-              <div className="card p-4">
-                <p className="text-xs text-[var(--muted)]">{isAr ? "عدد الصفوف" : "Rows"}</p>
-                <p className="mt-1 text-2xl font-bold">{stats.rows}</p>
-              </div>
-              <div className="card p-4">
-                <p className="text-xs text-[var(--muted)]">{isAr ? "عدد الدول" : "Countries"}</p>
-                <p className="mt-1 text-2xl font-bold">{stats.countries}</p>
-              </div>
-              <div className="card p-4">
-                <p className="text-xs text-[var(--muted)]">{isAr ? "أقل سعر بالريال" : "Lowest SAR"}</p>
-                <p className="mt-1 text-2xl font-bold">{typeof stats.minSar === "number" ? stats.minSar.toFixed(2) : "-"}</p>
-              </div>
-              <div className="card p-4">
-                <p className="text-xs text-[var(--muted)]">{isAr ? "آخر تحديث" : "Last Update"}</p>
-                <p className="mt-1 text-sm font-semibold">{stats.latest ? new Date(stats.latest).toLocaleString() : "-"}</p>
-              </div>
-            </section>
-
-            <section className="card mb-4 p-4">
-              <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-6">
+          {viewMode === "subscriptions" ? (
+            <>
+              <section className="neo-filters card">
                 <input
-                  className="soft-input xl:col-span-2"
-                  placeholder={isAr ? "ابحث بالدولة أو الرمز أو الباقة أو العملة" : "Search country, ISO, tier, currency"}
+                  className="soft-input neo-search"
+                  placeholder={copy.searchPlaceholder}
                   value={search}
                   onChange={(e) => setSearch(e.target.value)}
                 />
 
-                <select className="soft-select" value={currency} onChange={(e) => setCurrency(e.target.value)}>
-                  <option value="all">{isAr ? "كل العملات" : "All currencies"}</option>
-                  {currencyOptions.map((c) => (
-                    <option key={c} value={c}>
-                      {c}
-                    </option>
-                  ))}
-                </select>
-
-                <select className="soft-select" value={tier} onChange={(e) => setTier(e.target.value)}>
-                  <option value="all">{isAr ? "كل الباقات" : "All tiers"}</option>
-                  <option value="Essential">{isAr ? "أساسي" : "Essential"}</option>
-                  <option value="Extra">{isAr ? "إكسترا" : "Extra"}</option>
-                  <option value="Premium">{isAr ? "بريميوم" : "Premium"}</option>
-                </select>
-
-                <select className="soft-select" value={duration} onChange={(e) => setDuration(e.target.value)}>
-                  <option value="all">{isAr ? "كل المدد" : "All durations"}</option>
-                  <option value="1">{isAr ? "شهر" : "1 month"}</option>
-                  <option value="3">{isAr ? "3 أشهر" : "3 months"}</option>
-                  <option value="12">{isAr ? "12 شهر" : "12 months"}</option>
-                </select>
-
-                <div className="flex gap-2">
-                  <select className="soft-select flex-1" value={sortBy} onChange={(e) => setSortBy(e.target.value as SortBy)}>
-                    <option value="country">{isAr ? "ترتيب: الدولة" : "Sort: Country"}</option>
-                    <option value="sarPrice">{isAr ? "ترتيب: السعر بالريال" : "Sort: Saudi Price"}</option>
-                    <option value="lastUpdated">{isAr ? "ترتيب: التحديث" : "Sort: Updated"}</option>
+                <div className="neo-filter-grid">
+                  <select className="soft-select" value={currency} onChange={(e) => setCurrency(e.target.value)}>
+                    <option value="all">{copy.allCurrencies}</option>
+                    {currencyOptions.map((c) => (
+                      <option key={c} value={c}>
+                        {c}
+                      </option>
+                    ))}
                   </select>
+
+                  <select className="soft-select" value={tier} onChange={(e) => setTier(e.target.value)}>
+                    <option value="all">{copy.allTiers}</option>
+                    <option value="Essential">{copy.tierEssential}</option>
+                    <option value="Extra">{copy.tierExtra}</option>
+                    <option value="Premium">{copy.tierPremium}</option>
+                  </select>
+
+                  <select className="soft-select" value={duration} onChange={(e) => setDuration(e.target.value)}>
+                    <option value="all">{copy.allDurations}</option>
+                    <option value="1">{copy.oneMonth}</option>
+                    <option value="3">{copy.threeMonths}</option>
+                    <option value="12">{copy.twelveMonths}</option>
+                  </select>
+
+                  <select className="soft-select" value={sortBy} onChange={(e) => setSortBy(e.target.value as SortBy)}>
+                    <option value="country">{copy.sortCountry}</option>
+                    <option value="sarPrice">{copy.sortSar}</option>
+                    <option value="lastUpdated">{copy.sortUpdated}</option>
+                  </select>
+
                   <button
                     type="button"
                     className="soft-btn whitespace-nowrap"
                     onClick={() => setSortDir((prev) => (prev === "asc" ? "desc" : "asc"))}
                   >
-                    {sortDir === "asc" ? (isAr ? "من الأقل للأعلى" : "Low->High") : (isAr ? "من الأعلى للأقل" : "High->Low")}
+                    {sortDir === "asc" ? copy.lowHigh : copy.highLow}
                   </button>
                 </div>
-              </div>
-            </section>
+              </section>
 
-            <PriceTable
-              rows={rows}
-              refreshingCountryId={refreshingCountryId}
-              onRefreshCountry={handleRefreshCountry}
-              onDeleteCountry={handleDeleteCountry}
-            />
-          </>
-        ) : (
-          <GameSearchSection />
-        )}
+              <section className="neo-table card">
+                <PriceTable
+                  rows={rows}
+                  refreshingCountryId={refreshingCountryId}
+                  onRefreshCountry={handleRefreshCountry}
+                  onDeleteCountry={handleDeleteCountry}
+                />
+              </section>
+            </>
+          ) : (
+            <GameSearchSection />
+          )}
+
+          {refreshProgress ? <p className="status-pill">{refreshProgress}</p> : null}
+          {error ? <p className="alert-error">{error}</p> : null}
+        </section>
       </div>
-
-      {refreshProgress ? (
-        <p className="mb-3 inline-flex rounded-full border border-sky-200 bg-sky-100/60 px-3 py-1 text-xs font-semibold text-sky-700 dark:border-sky-900 dark:bg-sky-900/20 dark:text-sky-300">
-          {refreshProgress}
-        </p>
-      ) : null}
-
-      {error ? (
-        <p className="mb-3 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-600 dark:border-red-900 dark:bg-red-950/20 dark:text-red-300">
-          {error}
-        </p>
-      ) : null}
-
     </main>
   );
 }
