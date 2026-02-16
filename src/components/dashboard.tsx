@@ -150,7 +150,19 @@ export function Dashboard() {
     setError("");
     setRefreshProgress("Refreshing all countries...");
     try {
-      await refreshAll(true);
+      const batchSize = 5;
+      let offset = 0;
+      let done = false;
+
+      while (!done) {
+        const result = await refreshAll(true, { offset, limit: batchSize });
+        const from = result.offset + 1;
+        const to = result.offset + result.processed;
+        setRefreshProgress(`Refreshing ${from}-${to} / ${result.total}`);
+        offset = result.nextOffset ?? 0;
+        done = result.done;
+      }
+
       await qc.invalidateQueries({ queryKey: ["prices"] });
       setRefreshProgress("Done");
       setTimeout(() => setRefreshProgress(""), 1200);

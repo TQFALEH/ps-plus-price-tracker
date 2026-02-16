@@ -97,7 +97,10 @@ export async function refreshOne(params: { countryId?: number; isoCode?: string;
   };
 }
 
-export async function refreshAll(force = false) {
+export async function refreshAll(
+  force = false,
+  options?: { offset?: number; limit?: number }
+) {
   const discovered = await discoverSupportedCountries();
   if (discovered.length > 0) {
     const inserted = insertCountriesIfMissing(discovered);
@@ -107,16 +110,27 @@ export async function refreshAll(force = false) {
   }
 
   const countries = listCountries();
+  const total = countries.length;
+  const offset = Math.max(0, options?.offset ?? 0);
+  const limit = Math.max(1, Math.min(options?.limit ?? 8, 20));
+  const batch = countries.slice(offset, offset + limit);
   const results: RefreshResult[] = [];
 
-  for (const country of countries) {
+  for (const country of batch) {
     const result = await refreshCountry(country, force);
     results.push(result);
   }
 
+  const nextOffset = offset + batch.length < total ? offset + batch.length : null;
+
   return {
     startedAt: nowIso(),
-    total: countries.length,
+    total,
+    offset,
+    limit,
+    processed: batch.length,
+    nextOffset,
+    done: nextOffset === null,
     ok: results.filter((r) => r.status === "ok").length,
     cached: results.filter((r) => r.status === "cached").length,
     failed: results.filter((r) => r.status === "error").length,

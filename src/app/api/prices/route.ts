@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getCountryByIso, getPrices, listCountries } from "@/lib/db";
+import { getCountryByIso, getPrices } from "@/lib/db";
 import { getCountryLocalCurrencies } from "@/lib/country-currency";
 import { getFxRate, getRateToSAR } from "@/lib/exchange-rates";
 import { refreshCountry } from "@/lib/pricing-service";
@@ -18,24 +18,11 @@ function normalizeCurrencyForCountry(isoCode: string, currency: string) {
   return curr;
 }
 
-async function warmUpPrices(country?: string) {
+async function warmUpCountryPrice(country?: string) {
   if (country) {
     const target = getCountryByIso(country.toUpperCase());
     if (target) {
       await refreshCountry(target, true);
-    }
-    return;
-  }
-
-  const warmPriorityIso = ["US", "SA", "GB", "DE", "JP", "AE", "FR", "CA"];
-  const all = listCountries();
-  const byIso = new Map(all.map((c) => [c.isoCode.toUpperCase(), c]));
-
-  for (const iso of warmPriorityIso) {
-    const c = byIso.get(iso);
-    if (c) {
-      // Sequential requests reduce chances of rate-limit and timeout spikes.
-      await refreshCountry(c, true);
     }
   }
 }
@@ -68,9 +55,8 @@ export async function GET(request: NextRequest) {
       sortDir
     });
 
-    const noFilters = !currency && !tier && !duration && !search;
-    if (data.length === 0 && (country || noFilters)) {
-      await warmUpPrices(country);
+    if (data.length === 0 && country) {
+      await warmUpCountryPrice(country);
       data = getPrices({
         country,
         currency,

@@ -13,6 +13,8 @@ export const countrySchema = z.object({
 export const refreshSchema = z.object({
   all: z.boolean().optional(),
   force: z.boolean().optional(),
+  offset: z.number().int().nonnegative().optional(),
+  limit: z.number().int().positive().max(20).optional(),
   countryId: z.number().int().positive().optional(),
   isoCode: z
     .string()

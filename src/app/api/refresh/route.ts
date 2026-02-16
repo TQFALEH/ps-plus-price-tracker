@@ -17,7 +17,10 @@ export async function POST(request: NextRequest) {
     const payload = refreshSchema.parse(json);
 
     if (payload.all) {
-      const result = await refreshAll(Boolean(payload.force));
+      const result = await refreshAll(Boolean(payload.force), {
+        offset: payload.offset,
+        limit: payload.limit
+      });
       return NextResponse.json({ data: result });
     }
 

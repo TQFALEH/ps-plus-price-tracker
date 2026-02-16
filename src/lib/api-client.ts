@@ -45,12 +45,25 @@ export async function refreshCountry(countryId: number, force = false) {
   return json.data;
 }
 
-export async function refreshAll(force = false) {
+export async function refreshAll(
+  force = false,
+  options?: { offset?: number; limit?: number }
+) {
   const res = await fetch("/api/refresh", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ all: true, force })
+    body: JSON.stringify({ all: true, force, offset: options?.offset, limit: options?.limit })
   });
-  const json = await parseJson<{ data: { results: Array<{ countryId: number; status: string }> } }>(res);
+  const json = await parseJson<{
+    data: {
+      total: number;
+      offset: number;
+      limit: number;
+      processed: number;
+      nextOffset: number | null;
+      done: boolean;
+      results: Array<{ countryId: number; status: string }>;
+    };
+  }>(res);
   return json.data;
 }
