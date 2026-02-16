@@ -3,6 +3,7 @@ import { getMemoryCache, setMemoryCache } from "@/lib/cache";
 import { FETCH_RETRY_COUNT } from "@/lib/utils";
 import { withRetry } from "@/lib/retry";
 import { getCountryLocalCurrencies } from "@/lib/country-currency";
+import { parseLocalizedNumber } from "@/lib/number-parsing";
 
 interface ProductNode {
   id?: string;
@@ -30,29 +31,9 @@ function decodeHtmlEntities(text: string) {
 }
 
 function parseAmount(displayPrice: string): number | null {
-  const match = displayPrice.match(/[\d\s.,]+/);
+  const match = displayPrice.match(/[\d\s.,'’]+/);
   if (!match) return null;
-
-  let n = match[0].replace(/\s+/g, "");
-  const hasComma = n.includes(",");
-  const hasDot = n.includes(".");
-
-  if (hasComma && hasDot) {
-    if (n.lastIndexOf(",") > n.lastIndexOf(".")) {
-      n = n.replace(/\./g, "").replace(",", ".");
-    } else {
-      n = n.replace(/,/g, "");
-    }
-  } else if (hasComma) {
-    if (/,[0-9]{1,2}$/.test(n)) {
-      n = n.replace(",", ".");
-    } else {
-      n = n.replace(/,/g, "");
-    }
-  }
-
-  const amount = Number(n);
-  return Number.isFinite(amount) ? amount : null;
+  return parseLocalizedNumber(match[0]);
 }
 
 function inferCurrency(displayPrice: string, localCurrency: string | null): string | null {

@@ -3,6 +3,7 @@ import { getMemoryCache, setMemoryCache } from "@/lib/cache";
 import { logger } from "@/lib/logger";
 import { withRetry } from "@/lib/retry";
 import { FETCH_RETRY_COUNT } from "@/lib/utils";
+import { parseLocalizedNumber } from "@/lib/number-parsing";
 
 export interface ParsedPrice {
   tier: Tier;
@@ -51,10 +52,7 @@ function parseNumber(value: unknown): number | null {
   if (typeof value !== "string") {
     return null;
   }
-
-  const cleaned = value.replace(/[^0-9.,-]/g, "").replace(",", ".");
-  const parsed = Number(cleaned);
-  return Number.isFinite(parsed) ? parsed : null;
+  return parseLocalizedNumber(value);
 }
 
 function decodeHtmlEntities(text: string) {
