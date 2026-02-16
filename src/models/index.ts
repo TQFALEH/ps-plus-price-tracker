@@ -43,3 +43,17 @@ export interface RefreshResult {
   status: "ok" | "cached" | "error";
   message?: string;
 }
+
+export interface GamePriceRecord {
+  countryId: number;
+  countryName: string;
+  isoCode: string;
+  gameName: string;
+  productType: string;
+  productId: string;
+  currency: string | null;
+  amount: number | null;
+  displayPrice: string;
+  sarPrice: number | null;
+  sourceUrl: string;
+}

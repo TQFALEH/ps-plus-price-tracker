@@ -1,4 +1,4 @@
-import { Country, CountryInput, PriceRecord } from "@/models";
+import { Country, CountryInput, GamePriceRecord, PriceRecord } from "@/models";
 
 async function parseJson<T>(res: Response): Promise<T> {
   const payload = (await res.json()) as T & { error?: string };
@@ -66,4 +66,26 @@ export async function refreshAll(
     };
   }>(res);
   return json.data;
+}
+
+export async function searchGamePrices(params: { name: string; offset?: number; limit?: number }) {
+  const qs = new URLSearchParams({
+    name: params.name,
+    offset: String(params.offset ?? 0),
+    limit: String(params.limit ?? 6)
+  });
+  const res = await fetch(`/api/game-prices?${qs.toString()}`, { cache: "no-store" });
+  const json = await parseJson<{
+    data: GamePriceRecord[];
+    meta: {
+      query: string;
+      total: number;
+      offset: number;
+      limit: number;
+      processed: number;
+      nextOffset: number | null;
+      done: boolean;
+    };
+  }>(res);
+  return json;
 }

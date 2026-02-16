@@ -2,14 +2,15 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { CountryInput, PriceRecord } from "@/models";
+import { CountryInput, GamePriceRecord, PriceRecord } from "@/models";
 import {
   addCountry,
   getCountries,
   getPrices,
   refreshAll,
   refreshCountry,
-  removeCountry
+  removeCountry,
+  searchGamePrices
 } from "@/lib/api-client";
 import { CountryForm } from "@/components/country-form";
 import { PriceTable } from "@/components/price-table";
@@ -30,6 +31,10 @@ export function Dashboard() {
   const [refreshProgress, setRefreshProgress] = useState<string>("");
   const [error, setError] = useState<string>("");
   const [didAutoBootstrap, setDidAutoBootstrap] = useState(false);
+  const [gameName, setGameName] = useState("");
+  const [gameRows, setGameRows] = useState<GamePriceRecord[]>([]);
+  const [gameLoading, setGameLoading] = useState(false);
+  const [gameProgress, setGameProgress] = useState("");
 
   const pricesQuery = useQuery({
     queryKey: ["prices"],
@@ -175,6 +180,53 @@ export function Dashboard() {
     }
   }
 
+  async function handleSearchGamePrices() {
+    const query = gameName.trim();
+    if (!query) {
+      setError("Enter a game name first");
+      return;
+    }
+
+    setError("");
+    setGameLoading(true);
+    setGameRows([]);
+    setGameProgress("Searching...");
+
+    try {
+      const batchSize = 6;
+      let offset = 0;
+      let done = false;
+      const all: GamePriceRecord[] = [];
+
+      while (!done) {
+        const response = await searchGamePrices({ name: query, offset, limit: batchSize });
+        all.push(...response.data);
+
+        const meta = response.meta;
+        const from = meta.offset + 1;
+        const to = meta.offset + meta.processed;
+        setGameProgress(`Searching ${from}-${to} / ${meta.total}`);
+
+        offset = meta.nextOffset ?? 0;
+        done = meta.done;
+      }
+
+      all.sort((a, b) => {
+        const aSar = typeof a.sarPrice === "number" ? a.sarPrice : Number.POSITIVE_INFINITY;
+        const bSar = typeof b.sarPrice === "number" ? b.sarPrice : Number.POSITIVE_INFINITY;
+        return aSar - bSar;
+      });
+
+      setGameRows(all);
+      setGameProgress(`Found ${all.length} prices`);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Game search failed");
+      setGameProgress("");
+    } finally {
+      setGameLoading(false);
+    }
+  }
+
   useEffect(() => {
     if (didAutoBootstrap) return;
     if (pricesQuery.isLoading || countriesQuery.isLoading) return;
@@ -304,6 +356,69 @@ export function Dashboard() {
             </button>
           </div>
         </div>
+      </section>
+
+      <section className="card mb-4 p-4">
+        <div className="flex flex-col gap-3 md:flex-row">
+          <input
+            className="soft-input flex-1"
+            placeholder="Search game price across all countries (example: Elden Ring)"
+            value={gameName}
+            onChange={(e) => setGameName(e.target.value)}
+          />
+          <button
+            type="button"
+            onClick={handleSearchGamePrices}
+            disabled={gameLoading}
+            className="primary-btn md:min-w-[220px] disabled:opacity-60"
+          >
+            {gameLoading ? "Searching..." : "Search Game Prices"}
+          </button>
+        </div>
+
+        {gameProgress ? (
+          <p className="mt-3 text-xs text-[var(--muted)]">{gameProgress}</p>
+        ) : null}
+
+        {gameRows.length > 0 ? (
+          <div className="mt-3 overflow-auto">
+            <table className="min-w-full text-sm">
+              <thead>
+                <tr className="border-b text-left text-xs uppercase tracking-wide text-[var(--muted)]">
+                  <th className="px-2 py-2">Country</th>
+                  <th className="px-2 py-2">ISO</th>
+                  <th className="px-2 py-2">Game</th>
+                  <th className="px-2 py-2">Type</th>
+                  <th className="px-2 py-2">Price</th>
+                  <th className="px-2 py-2">Saudi Price</th>
+                  <th className="px-2 py-2">Source</th>
+                </tr>
+              </thead>
+              <tbody>
+                {gameRows.map((row) => (
+                  <tr key={`${row.countryId}-${row.productId}`} className="border-b">
+                    <td className="px-2 py-2">{row.countryName}</td>
+                    <td className="px-2 py-2">{row.isoCode}</td>
+                    <td className="px-2 py-2">{row.gameName}</td>
+                    <td className="px-2 py-2">{row.productType}</td>
+                    <td className="px-2 py-2">
+                      {row.displayPrice}
+                      {row.currency ? ` (${row.currency})` : ""}
+                    </td>
+                    <td className="px-2 py-2">
+                      {typeof row.sarPrice === "number" ? `${row.sarPrice.toFixed(2)} SAR` : "N/A"}
+                    </td>
+                    <td className="px-2 py-2">
+                      <a className="text-[var(--accent)] hover:underline" href={row.sourceUrl} target="_blank" rel="noreferrer">
+                        Open
+                      </a>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        ) : null}
       </section>
 
       {refreshProgress ? (
