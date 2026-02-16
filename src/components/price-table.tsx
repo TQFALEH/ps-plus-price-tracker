@@ -3,6 +3,7 @@
 import { useMemo, useRef } from "react";
 import { useVirtualizer } from "@tanstack/react-virtual";
 import { PriceRecord } from "@/models";
+import { useLanguage } from "@/components/language-provider";
 
 interface PriceTableProps {
   rows: PriceRecord[];
@@ -52,6 +53,8 @@ export function PriceTable({
   onRefreshCountry,
   onDeleteCountry
 }: PriceTableProps) {
+  const { language } = useLanguage();
+  const isAr = language === "ar";
   const parentRef = useRef<HTMLDivElement>(null);
 
   const uniqueCountryIds = useMemo(() => {
@@ -71,7 +74,10 @@ export function PriceTable({
     <div className="space-y-4">
       <div className="card overflow-hidden max-md:hidden">
         <div className="grid grid-cols-9 gap-2 border-b px-4 py-3 text-[11px] font-semibold uppercase tracking-wide text-[var(--muted)]">
-          {columns.map((col) => (
+          {(isAr
+            ? ["الدولة", "ISO", "العملة", "الباقة", "المدة", "السعر", "آخر تحديث", "المصدر", "الإجراءات"]
+            : columns
+          ).map((col) => (
             <div key={col}>{col}</div>
           ))}
         </div>
@@ -99,7 +105,7 @@ export function PriceTable({
                     <div>{row.currency}</div>
                     {row.isLocalCurrency === false ? (
                       <span className="chip mt-1 border-amber-200 text-amber-700 dark:border-amber-900 dark:text-amber-400">
-                        Regional
+                        {isAr ? "إقليمي" : "Regional"}
                       </span>
                     ) : null}
                   </div>
@@ -112,14 +118,14 @@ export function PriceTable({
                     <div className="text-xs text-[var(--muted)]">
                       {typeof row.sarPrice === "number"
                         ? `≈ ${formatAmount(row.sarPrice)} SAR`
-                        : "SAR unavailable"}
+                        : isAr ? "SAR غير متاح" : "SAR unavailable"}
                     </div>
                     {row.isLocalCurrency === false &&
                     typeof row.localEstimatedPrice === "number" &&
                     row.localCurrencyCodes &&
                     row.localCurrencyCodes.length > 0 ? (
                       <div className="text-xs text-amber-600 dark:text-amber-400">
-                        ~ {formatAmount(row.localEstimatedPrice)} {row.localCurrencyCodes[0]} (est.)
+                        ~ {formatAmount(row.localEstimatedPrice)} {row.localCurrencyCodes[0]} {isAr ? "(تقريبي)" : "(est.)"}
                       </div>
                     ) : null}
                   </div>
@@ -139,14 +145,14 @@ export function PriceTable({
                       disabled={isRefreshing}
                       className="soft-btn !px-2 !py-1 !text-xs disabled:opacity-60"
                     >
-                      {isRefreshing ? "..." : "Refresh"}
+                      {isRefreshing ? "..." : isAr ? "تحديث" : "Refresh"}
                     </button>
                     <button
                       type="button"
                       onClick={() => onDeleteCountry(row.countryId)}
                       className="soft-btn !px-2 !py-1 !text-xs border-red-200 text-red-500 dark:border-red-900"
                     >
-                      Delete
+                      {isAr ? "حذف" : "Delete"}
                     </button>
                   </div>
                 </div>
@@ -172,33 +178,33 @@ export function PriceTable({
               </div>
 
               <div className="grid grid-cols-2 gap-2 text-xs">
-                <div className="text-[var(--muted)]">Tier</div>
+                <div className="text-[var(--muted)]">{isAr ? "الباقة" : "Tier"}</div>
                 <div>{row.tier}</div>
-                <div className="text-[var(--muted)]">Duration</div>
+                <div className="text-[var(--muted)]">{isAr ? "المدة" : "Duration"}</div>
                 <div>{formatDuration(row.durationMonths)}</div>
-                <div className="text-[var(--muted)]">Currency</div>
+                <div className="text-[var(--muted)]">{isAr ? "العملة" : "Currency"}</div>
                 <div>
                   {row.currency}
                   {row.isLocalCurrency === false ? (
                     <span className="chip ml-2 border-amber-200 text-amber-700 dark:border-amber-900 dark:text-amber-400">
-                      Regional
+                      {isAr ? "إقليمي" : "Regional"}
                     </span>
                   ) : null}
                 </div>
-                <div className="text-[var(--muted)]">Price</div>
+                <div className="text-[var(--muted)]">{isAr ? "السعر" : "Price"}</div>
                 <div className="font-semibold">
                   {formatAmount(row.price)} {row.currency}
                 </div>
-                <div className="text-[var(--muted)]">Saudi Price</div>
+                <div className="text-[var(--muted)]">{isAr ? "السعر بالريال" : "Saudi Price"}</div>
                 <div>
-                  {typeof row.sarPrice === "number" ? `${formatAmount(row.sarPrice)} SAR` : "N/A"}
+                  {typeof row.sarPrice === "number" ? `${formatAmount(row.sarPrice)} SAR` : isAr ? "غير متاح" : "N/A"}
                 </div>
                 {row.isLocalCurrency === false &&
                 typeof row.localEstimatedPrice === "number" &&
                 row.localCurrencyCodes &&
                 row.localCurrencyCodes.length > 0 ? (
                   <>
-                    <div className="text-[var(--muted)]">Local Estimate</div>
+                    <div className="text-[var(--muted)]">{isAr ? "تقدير محلي" : "Local Estimate"}</div>
                     <div>
                       {formatAmount(row.localEstimatedPrice)} {row.localCurrencyCodes[0]}
                     </div>
@@ -213,14 +219,14 @@ export function PriceTable({
                   disabled={isRefreshing}
                   className="soft-btn flex-1 disabled:opacity-60"
                 >
-                  {isRefreshing ? "Refreshing..." : "Refresh"}
+                  {isRefreshing ? (isAr ? "جاري التحديث..." : "Refreshing...") : (isAr ? "تحديث" : "Refresh")}
                 </button>
                 <button
                   type="button"
                   onClick={() => onDeleteCountry(row.countryId)}
                   className="soft-btn flex-1 border-red-200 text-red-500 dark:border-red-900"
                 >
-                  Delete
+                  {isAr ? "حذف" : "Delete"}
                 </button>
               </div>
             </article>
@@ -229,7 +235,9 @@ export function PriceTable({
       </div>
 
       <div className="border-t px-1 py-2 text-xs text-[var(--muted)]">
-        {rows.length} rows across {uniqueCountryIds.size} countries
+        {isAr
+          ? `${rows.length} صف عبر ${uniqueCountryIds.size} دولة`
+          : `${rows.length} rows across ${uniqueCountryIds.size} countries`}
       </div>
     </div>
   );

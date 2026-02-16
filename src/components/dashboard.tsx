@@ -16,6 +16,8 @@ import { CountryForm } from "@/components/country-form";
 import { PriceTable } from "@/components/price-table";
 import { ThemeToggle } from "@/components/theme-toggle";
 import { GameSearchSection } from "@/components/game-search-section";
+import { LanguageToggle } from "@/components/language-toggle";
+import { useLanguage } from "@/components/language-provider";
 
 type SortBy = "sarPrice" | "country" | "lastUpdated";
 type SortDir = "asc" | "desc";
@@ -23,6 +25,8 @@ type ViewMode = "subscriptions" | "games";
 
 export function Dashboard() {
   const contentRef = useRef<HTMLDivElement | null>(null);
+  const { language } = useLanguage();
+  const isAr = language === "ar";
   const qc = useQueryClient();
   const [search, setSearch] = useState("");
   const [currency, setCurrency] = useState("all");
@@ -142,11 +146,15 @@ export function Dashboard() {
 
     for (let i = 0; i < countries.length; i += 1) {
       const c = countries[i];
-      setRefreshProgress(`Refreshing ${c.isoCode} (${i + 1}/${countries.length})`);
+      setRefreshProgress(
+        isAr
+          ? `تحديث ${c.isoCode} (${i + 1}/${countries.length})`
+          : `Refreshing ${c.isoCode} (${i + 1}/${countries.length})`
+      );
       await refreshCountry(c.id, true);
     }
 
-    setRefreshProgress("Done");
+    setRefreshProgress(isAr ? "تم" : "Done");
     await qc.invalidateQueries({ queryKey: ["prices"] });
     setTimeout(() => setRefreshProgress(""), 1200);
   }
@@ -168,14 +176,14 @@ export function Dashboard() {
 
   async function handleSmartRefreshAll() {
     setError("");
-    setRefreshProgress("Refreshing all countries...");
+    setRefreshProgress(isAr ? "تحديث كل الدول..." : "Refreshing all countries...");
     try {
       await runBatchedRefresh("Refreshing");
       await qc.invalidateQueries({ queryKey: ["prices"] });
-      setRefreshProgress("Done");
+      setRefreshProgress(isAr ? "تم" : "Done");
       setTimeout(() => setRefreshProgress(""), 1200);
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Refresh all failed");
+      setError(e instanceof Error ? e.message : isAr ? "فشل تحديث الكل" : "Refresh all failed");
       setRefreshProgress("");
     }
   }
@@ -195,20 +203,20 @@ export function Dashboard() {
 
     setDidAutoBootstrap(true);
     setError("");
-    setRefreshProgress("First sync started...");
+    setRefreshProgress(isAr ? "بدء المزامنة الأولى..." : "First sync started...");
 
     void (async () => {
       try {
-        await runBatchedRefresh("First sync");
+        await runBatchedRefresh(isAr ? "مزامنة" : "First sync");
         await qc.invalidateQueries({ queryKey: ["prices"] });
-        setRefreshProgress("Done");
+        setRefreshProgress(isAr ? "تم" : "Done");
         setTimeout(() => setRefreshProgress(""), 1200);
       } catch (e) {
-        setError(e instanceof Error ? e.message : "Initial sync failed");
+        setError(e instanceof Error ? e.message : isAr ? "فشلت المزامنة الأولى" : "Initial sync failed");
         setRefreshProgress("");
       }
     })();
-  }, [didAutoBootstrap, pricesQuery.isLoading, countriesQuery.isLoading, pricesQuery.data, countriesQuery.data, qc]);
+  }, [didAutoBootstrap, pricesQuery.isLoading, countriesQuery.isLoading, pricesQuery.data, countriesQuery.data, qc, isAr]);
 
   useEffect(() => {
     if (!contentRef.current) return;
@@ -220,7 +228,7 @@ export function Dashboard() {
   }, [viewMode]);
 
   if (pricesQuery.isLoading || countriesQuery.isLoading) {
-    return <div className="p-8 text-sm text-[var(--muted)]">Loading dashboard...</div>;
+    return <div className="p-8 text-sm text-[var(--muted)]">{isAr ? "جاري تحميل اللوحة..." : "Loading dashboard..."}</div>;
   }
 
   const rows = filteredRows as PriceRecord[];
@@ -230,27 +238,36 @@ export function Dashboard() {
       <header className="mb-5 card p-4 sm:p-5">
         <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
           <div>
-            <p className="text-[11px] uppercase tracking-[0.16em] text-[var(--muted)]">PlayStation Intelligence</p>
-            <h1 className="mt-1 text-2xl font-bold sm:text-3xl">PlayStation Plus Price Tracker</h1>
-            <p className="mt-1 text-sm text-[var(--muted)]">Live regional prices, smart currency normalization, and Saudi conversion.</p>
+            <p className="text-[11px] uppercase tracking-[0.16em] text-[var(--muted)]">
+              {isAr ? "ذكاء بلايستيشن" : "PlayStation Intelligence"}
+            </p>
+            <h1 className="mt-1 text-2xl font-bold sm:text-3xl">
+              {isAr ? "متتبع أسعار بلايستيشن بلس" : "PlayStation Plus Price Tracker"}
+            </h1>
+            <p className="mt-1 text-sm text-[var(--muted)]">
+              {isAr
+                ? "أسعار المناطق مباشرة مع توحيد العملات والتحويل الذكي إلى الريال السعودي."
+                : "Live regional prices, smart currency normalization, and Saudi conversion."}
+            </p>
           </div>
 
           <div className="flex flex-wrap items-center gap-2">
             <ThemeToggle />
+            <LanguageToggle />
             <div className="inline-flex rounded-xl border border-[var(--border)] p-1">
               <button
                 type="button"
                 className={viewMode === "subscriptions" ? "primary-btn !px-3 !py-1.5 !text-xs" : "soft-btn !px-3 !py-1.5 !text-xs border-transparent"}
                 onClick={() => setViewMode("subscriptions")}
               >
-                Subscriptions
+                {isAr ? "الاشتراكات" : "Subscriptions"}
               </button>
               <button
                 type="button"
                 className={viewMode === "games" ? "primary-btn !px-3 !py-1.5 !text-xs" : "soft-btn !px-3 !py-1.5 !text-xs border-transparent"}
                 onClick={() => setViewMode("games")}
               >
-                Games
+                {isAr ? "الألعاب" : "Games"}
               </button>
             </div>
             <CountryForm
@@ -259,10 +276,10 @@ export function Dashboard() {
               }}
             />
             <button type="button" onClick={handleRefreshAll} className="soft-btn">
-              Refresh All (client)
+              {isAr ? "تحديث الكل (محلي)" : "Refresh All (client)"}
             </button>
             <button type="button" onClick={handleSmartRefreshAll} className="primary-btn">
-              Refresh All (server)
+              {isAr ? "تحديث الكل (سيرفر)" : "Refresh All (server)"}
             </button>
           </div>
         </div>
@@ -273,19 +290,19 @@ export function Dashboard() {
           <>
             <section className="mb-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
               <div className="card p-4">
-                <p className="text-xs text-[var(--muted)]">Rows</p>
+                <p className="text-xs text-[var(--muted)]">{isAr ? "عدد الصفوف" : "Rows"}</p>
                 <p className="mt-1 text-2xl font-bold">{stats.rows}</p>
               </div>
               <div className="card p-4">
-                <p className="text-xs text-[var(--muted)]">Countries</p>
+                <p className="text-xs text-[var(--muted)]">{isAr ? "عدد الدول" : "Countries"}</p>
                 <p className="mt-1 text-2xl font-bold">{stats.countries}</p>
               </div>
               <div className="card p-4">
-                <p className="text-xs text-[var(--muted)]">Lowest SAR</p>
+                <p className="text-xs text-[var(--muted)]">{isAr ? "أقل سعر بالريال" : "Lowest SAR"}</p>
                 <p className="mt-1 text-2xl font-bold">{typeof stats.minSar === "number" ? stats.minSar.toFixed(2) : "-"}</p>
               </div>
               <div className="card p-4">
-                <p className="text-xs text-[var(--muted)]">Last Update</p>
+                <p className="text-xs text-[var(--muted)]">{isAr ? "آخر تحديث" : "Last Update"}</p>
                 <p className="mt-1 text-sm font-semibold">{stats.latest ? new Date(stats.latest).toLocaleString() : "-"}</p>
               </div>
             </section>
@@ -294,13 +311,13 @@ export function Dashboard() {
               <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-6">
                 <input
                   className="soft-input xl:col-span-2"
-                  placeholder="Search country, ISO, tier, currency"
+                  placeholder={isAr ? "ابحث بالدولة أو الرمز أو الباقة أو العملة" : "Search country, ISO, tier, currency"}
                   value={search}
                   onChange={(e) => setSearch(e.target.value)}
                 />
 
                 <select className="soft-select" value={currency} onChange={(e) => setCurrency(e.target.value)}>
-                  <option value="all">All currencies</option>
+                  <option value="all">{isAr ? "كل العملات" : "All currencies"}</option>
                   {currencyOptions.map((c) => (
                     <option key={c} value={c}>
                       {c}
@@ -309,31 +326,31 @@ export function Dashboard() {
                 </select>
 
                 <select className="soft-select" value={tier} onChange={(e) => setTier(e.target.value)}>
-                  <option value="all">All tiers</option>
-                  <option value="Essential">Essential</option>
-                  <option value="Extra">Extra</option>
-                  <option value="Premium">Premium</option>
+                  <option value="all">{isAr ? "كل الباقات" : "All tiers"}</option>
+                  <option value="Essential">{isAr ? "أساسي" : "Essential"}</option>
+                  <option value="Extra">{isAr ? "إكسترا" : "Extra"}</option>
+                  <option value="Premium">{isAr ? "بريميوم" : "Premium"}</option>
                 </select>
 
                 <select className="soft-select" value={duration} onChange={(e) => setDuration(e.target.value)}>
-                  <option value="all">All durations</option>
-                  <option value="1">1 month</option>
-                  <option value="3">3 months</option>
-                  <option value="12">12 months</option>
+                  <option value="all">{isAr ? "كل المدد" : "All durations"}</option>
+                  <option value="1">{isAr ? "شهر" : "1 month"}</option>
+                  <option value="3">{isAr ? "3 أشهر" : "3 months"}</option>
+                  <option value="12">{isAr ? "12 شهر" : "12 months"}</option>
                 </select>
 
                 <div className="flex gap-2">
                   <select className="soft-select flex-1" value={sortBy} onChange={(e) => setSortBy(e.target.value as SortBy)}>
-                    <option value="country">Sort: Country</option>
-                    <option value="sarPrice">Sort: Saudi Price</option>
-                    <option value="lastUpdated">Sort: Updated</option>
+                    <option value="country">{isAr ? "ترتيب: الدولة" : "Sort: Country"}</option>
+                    <option value="sarPrice">{isAr ? "ترتيب: السعر بالريال" : "Sort: Saudi Price"}</option>
+                    <option value="lastUpdated">{isAr ? "ترتيب: التحديث" : "Sort: Updated"}</option>
                   </select>
                   <button
                     type="button"
                     className="soft-btn whitespace-nowrap"
                     onClick={() => setSortDir((prev) => (prev === "asc" ? "desc" : "asc"))}
                   >
-                    {sortDir === "asc" ? "Low->High" : "High->Low"}
+                    {sortDir === "asc" ? (isAr ? "من الأقل للأعلى" : "Low->High") : (isAr ? "من الأعلى للأقل" : "High->Low")}
                   </button>
                 </div>
               </div>

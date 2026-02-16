@@ -27,12 +27,16 @@
 
 body {
   background:
-    radial-gradient(circle at top right, color-mix(in oklab, var(--accent) 8%, transparent), transparent 42%),
-    radial-gradient(circle at bottom left, color-mix(in oklab, var(--accent-2) 10%, transparent), transparent 45%),
+    radial-gradient(circle at top right, color-mix(in oklab, var(--accent) 10%, transparent), transparent 42%),
+    radial-gradient(circle at bottom left, color-mix(in oklab, var(--accent-2) 12%, transparent), transparent 45%),
     var(--background);
   color: var(--foreground);
-  font-family: "Sora", "SF Pro Display", "Segoe UI", sans-serif;
+  font-family: var(--font-sora), "SF Pro Display", "Segoe UI", sans-serif;
   min-height: 100vh;
+}
+
+html[dir="rtl"] body {
+  font-family: var(--font-cairo), "Segoe UI", sans-serif;
 }
 
 .card {

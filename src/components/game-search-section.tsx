@@ -4,6 +4,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import gsap from "gsap";
 import { GamePriceRecord } from "@/models";
 import { searchGamePrices } from "@/lib/api-client";
+import { useLanguage } from "@/components/language-provider";
 
 function isoToFlag(isoCode: string) {
   const code = isoCode.toUpperCase();
@@ -16,6 +17,8 @@ function isoToFlag(isoCode: string) {
 type GameSort = "sarAsc" | "sarDesc" | "name" | "priceAsc";
 
 export function GameSearchSection() {
+  const { language } = useLanguage();
+  const isAr = language === "ar";
   const sectionRef = useRef<HTMLElement | null>(null);
   const cardsWrapRef = useRef<HTMLDivElement | null>(null);
 
@@ -92,14 +95,14 @@ export function GameSearchSection() {
   async function onSearch() {
     const name = query.trim();
     if (!name) {
-      setError("Enter a game name first");
+      setError(isAr ? "اكتب اسم اللعبة أولًا" : "Enter a game name first");
       return;
     }
 
     setError("");
     setLoading(true);
     setRows([]);
-    setProgress("Searching...");
+    setProgress(isAr ? "جاري البحث..." : "Searching...");
 
     try {
       const batchSize = 6;
@@ -114,7 +117,7 @@ export function GameSearchSection() {
         const meta = response.meta;
         const from = meta.offset + 1;
         const to = meta.offset + meta.processed;
-        setProgress(`Scanning stores ${from}-${to} / ${meta.total}`);
+        setProgress(isAr ? `فحص المتاجر ${from}-${to} / ${meta.total}` : `Scanning stores ${from}-${to} / ${meta.total}`);
 
         offset = meta.nextOffset ?? 0;
         done = meta.done;
@@ -124,9 +127,9 @@ export function GameSearchSection() {
       setCountryFilter("all");
       setTypeFilter("all");
       setSortBy("sarAsc");
-      setProgress(`Found ${all.length} results`);
+      setProgress(isAr ? `تم العثور على ${all.length} نتيجة` : `Found ${all.length} results`);
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Game search failed");
+      setError(e instanceof Error ? e.message : isAr ? "فشل بحث الألعاب" : "Game search failed");
       setProgress("");
     } finally {
       setLoading(false);
@@ -136,15 +139,17 @@ export function GameSearchSection() {
   return (
     <section ref={sectionRef} className="card mb-4 p-4 sm:p-5">
       <div className="mb-3 flex flex-col gap-1">
-        <p className="text-[11px] uppercase tracking-[0.16em] text-[var(--muted)]">Game Explorer</p>
-        <h2 className="text-xl font-bold">Games Price Section</h2>
-        <p className="text-sm text-[var(--muted)]">Dedicated search with per-country game prices, posters, and smart filtering.</p>
+        <p className="text-[11px] uppercase tracking-[0.16em] text-[var(--muted)]">{isAr ? "مستكشف الألعاب" : "Game Explorer"}</p>
+        <h2 className="text-xl font-bold">{isAr ? "قسم أسعار الألعاب" : "Games Price Section"}</h2>
+        <p className="text-sm text-[var(--muted)]">
+          {isAr ? "بحث مخصص مع الأسعار حسب كل دولة والبوستر وفلاتر ذكية." : "Dedicated search with per-country game prices, posters, and smart filtering."}
+        </p>
       </div>
 
       <div className="grid gap-3 lg:grid-cols-[1fr_auto]">
         <input
           className="soft-input"
-          placeholder="Example: Elden Ring, GTA V, FC 25"
+          placeholder={isAr ? "مثال: Elden Ring أو GTA V أو FC 25" : "Example: Elden Ring, GTA V, FC 25"}
           value={query}
           onChange={(e) => setQuery(e.target.value)}
         />
@@ -154,13 +159,13 @@ export function GameSearchSection() {
           disabled={loading}
           className="primary-btn disabled:opacity-60"
         >
-          {loading ? "Searching..." : "Search Game"}
+          {loading ? (isAr ? "جاري البحث..." : "Searching...") : (isAr ? "ابحث عن لعبة" : "Search Game")}
         </button>
       </div>
 
       <div className="mt-3 grid gap-3 md:grid-cols-2 xl:grid-cols-4">
         <select className="soft-select" value={countryFilter} onChange={(e) => setCountryFilter(e.target.value)}>
-          <option value="all">All Countries</option>
+          <option value="all">{isAr ? "كل الدول" : "All Countries"}</option>
           {countryOptions.map((entry) => {
             const [iso, name] = entry.split("|");
             return (
@@ -172,7 +177,7 @@ export function GameSearchSection() {
         </select>
 
         <select className="soft-select" value={typeFilter} onChange={(e) => setTypeFilter(e.target.value)}>
-          <option value="all">All Product Types</option>
+          <option value="all">{isAr ? "كل أنواع المنتجات" : "All Product Types"}</option>
           {typeOptions.map((type) => (
             <option key={type} value={type}>
               {type}
@@ -182,17 +187,17 @@ export function GameSearchSection() {
 
         <input
           className="soft-input"
-          placeholder="Max SAR (optional)"
+          placeholder={isAr ? "أقصى سعر SAR (اختياري)" : "Max SAR (optional)"}
           value={maxSar}
           onChange={(e) => setMaxSar(e.target.value)}
           inputMode="decimal"
         />
 
         <select className="soft-select" value={sortBy} onChange={(e) => setSortBy(e.target.value as GameSort)}>
-          <option value="sarAsc">Sort: SAR low-high</option>
-          <option value="sarDesc">Sort: SAR high-low</option>
-          <option value="priceAsc">Sort: Local price low-high</option>
-          <option value="name">Sort: Game name</option>
+          <option value="sarAsc">{isAr ? "ترتيب: SAR من الأقل للأعلى" : "Sort: SAR low-high"}</option>
+          <option value="sarDesc">{isAr ? "ترتيب: SAR من الأعلى للأقل" : "Sort: SAR high-low"}</option>
+          <option value="priceAsc">{isAr ? "ترتيب: السعر المحلي من الأقل للأعلى" : "Sort: Local price low-high"}</option>
+          <option value="name">{isAr ? "ترتيب: اسم اللعبة" : "Sort: Game name"}</option>
         </select>
       </div>
 
@@ -211,7 +216,7 @@ export function GameSearchSection() {
                 {row.posterUrl ? (
                   <img src={row.posterUrl} alt={row.gameName} className="h-full w-full object-cover" loading="lazy" />
                 ) : (
-                  <div className="flex h-full items-center justify-center text-xs text-[var(--muted)]">No Poster</div>
+                  <div className="flex h-full items-center justify-center text-xs text-[var(--muted)]">{isAr ? "لا يوجد بوستر" : "No Poster"}</div>
                 )}
                 <span className="absolute left-2 top-2 rounded-full bg-black/70 px-2 py-1 text-xs text-white">
                   {isoToFlag(row.isoCode)} {row.isoCode}
@@ -225,7 +230,7 @@ export function GameSearchSection() {
                 <div className="rounded-lg bg-slate-50 p-2 text-sm dark:bg-slate-900/60">
                   <p className="font-semibold">{row.displayPrice}{row.currency ? ` (${row.currency})` : ""}</p>
                   <p className="text-xs text-[var(--muted)]">
-                    {typeof row.sarPrice === "number" ? `${row.sarPrice.toFixed(2)} SAR` : "SAR unavailable"}
+                    {typeof row.sarPrice === "number" ? `${row.sarPrice.toFixed(2)} SAR` : (isAr ? "سعر SAR غير متاح" : "SAR unavailable")}
                   </p>
                 </div>
 
@@ -235,7 +240,7 @@ export function GameSearchSection() {
                   rel="noreferrer"
                   className="inline-flex text-xs font-semibold text-[var(--accent)] hover:underline"
                 >
-                  Open In Store
+                  {isAr ? "افتح في المتجر" : "Open In Store"}
                 </a>
               </div>
             </article>
@@ -243,7 +248,7 @@ export function GameSearchSection() {
         </div>
       ) : rows.length > 0 ? (
         <div className="mt-4 rounded-xl border border-dashed p-6 text-center text-sm text-[var(--muted)]">
-          No results with current filters.
+          {isAr ? "لا توجد نتائج بهذه الفلاتر." : "No results with current filters."}
         </div>
       ) : null}
     </section>
