@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { CountryInput, PriceRecord } from "@/models";
 import {
@@ -29,6 +29,7 @@ export function Dashboard() {
   const [refreshingCountryId, setRefreshingCountryId] = useState<number | null>(null);
   const [refreshProgress, setRefreshProgress] = useState<string>("");
   const [error, setError] = useState<string>("");
+  const [didAutoBootstrap, setDidAutoBootstrap] = useState(false);
 
   const pricesQuery = useQuery({
     queryKey: ["prices"],
@@ -88,7 +89,6 @@ export function Dashboard() {
 
   const stats = useMemo(() => {
     const rows = filteredRows;
-    const countries = new Set(rows.map((r) => r.isoCode));
     const minSar = rows
       .map((r) => r.sarPrice)
       .filter((n): n is number => typeof n === "number")
@@ -99,11 +99,11 @@ export function Dashboard() {
 
     return {
       rows: rows.length,
-      countries: countries.size,
+      countries: (countriesQuery.data ?? []).length,
       minSar,
       latest
     };
-  }, [filteredRows]);
+  }, [filteredRows, countriesQuery.data]);
 
   async function handleDeleteCountry(countryId: number) {
     setError("");
@@ -146,23 +146,26 @@ export function Dashboard() {
     setTimeout(() => setRefreshProgress(""), 1200);
   }
 
+  async function runBatchedRefresh(labelPrefix: string) {
+    const batchSize = 5;
+    let offset = 0;
+    let done = false;
+
+    while (!done) {
+      const result = await refreshAll(true, { offset, limit: batchSize });
+      const from = result.offset + 1;
+      const to = result.offset + result.processed;
+      setRefreshProgress(`${labelPrefix} ${from}-${to} / ${result.total}`);
+      offset = result.nextOffset ?? 0;
+      done = result.done;
+    }
+  }
+
   async function handleSmartRefreshAll() {
     setError("");
     setRefreshProgress("Refreshing all countries...");
     try {
-      const batchSize = 5;
-      let offset = 0;
-      let done = false;
-
-      while (!done) {
-        const result = await refreshAll(true, { offset, limit: batchSize });
-        const from = result.offset + 1;
-        const to = result.offset + result.processed;
-        setRefreshProgress(`Refreshing ${from}-${to} / ${result.total}`);
-        offset = result.nextOffset ?? 0;
-        done = result.done;
-      }
-
+      await runBatchedRefresh("Refreshing");
       await qc.invalidateQueries({ queryKey: ["prices"] });
       setRefreshProgress("Done");
       setTimeout(() => setRefreshProgress(""), 1200);
@@ -171,6 +174,36 @@ export function Dashboard() {
       setRefreshProgress("");
     }
   }
+
+  useEffect(() => {
+    if (didAutoBootstrap) return;
+    if (pricesQuery.isLoading || countriesQuery.isLoading) return;
+
+    const countriesCount = (countriesQuery.data ?? []).length;
+    const pricesCount = (pricesQuery.data ?? []).length;
+    if (countriesCount === 0) return;
+
+    if (pricesCount > 0) {
+      setDidAutoBootstrap(true);
+      return;
+    }
+
+    setDidAutoBootstrap(true);
+    setError("");
+    setRefreshProgress("First sync started...");
+
+    void (async () => {
+      try {
+        await runBatchedRefresh("First sync");
+        await qc.invalidateQueries({ queryKey: ["prices"] });
+        setRefreshProgress("Done");
+        setTimeout(() => setRefreshProgress(""), 1200);
+      } catch (e) {
+        setError(e instanceof Error ? e.message : "Initial sync failed");
+        setRefreshProgress("");
+      }
+    })();
+  }, [didAutoBootstrap, pricesQuery.isLoading, countriesQuery.isLoading, pricesQuery.data, countriesQuery.data, qc]);
 
   if (pricesQuery.isLoading || countriesQuery.isLoading) {
     return <div className="p-8 text-sm text-[var(--muted)]">Loading dashboard...</div>;
