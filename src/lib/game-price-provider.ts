@@ -7,6 +7,7 @@ import { getCountryLocalCurrencies } from "@/lib/country-currency";
 interface ProductNode {
   id?: string;
   name?: string;
+  posterUrl?: string;
   localizedStoreDisplayClassification?: string;
   storeDisplayClassification?: string;
   price?: {
@@ -132,6 +133,10 @@ function parseProductsFromHtml(html: string): ProductNode[] {
     const nameRaw = block.match(/#product-name"[^>]*>([\s\S]*?)<\/span>/i)?.[1] ?? null;
     const priceRaw = block.match(/#price#display-price"[^>]*>([\s\S]*?)<\/span>/i)?.[1] ?? null;
     const typeRaw = block.match(/#product-type"[^>]*>([\s\S]*?)<\/span>/i)?.[1] ?? null;
+    const posterRaw =
+      block.match(/#game-art#image#image-no-js"[^>]*src="([^"]+)"/i)?.[1] ??
+      block.match(/#game-art#image#preview"[^>]*src="([^"]+)"/i)?.[1] ??
+      null;
 
     if (!href || !nameRaw || !priceRaw) continue;
 
@@ -141,6 +146,7 @@ function parseProductsFromHtml(html: string): ProductNode[] {
     products.push({
       id,
       name: decodeHtmlEntities(nameRaw),
+      posterUrl: posterRaw ? decodeHtmlEntities(posterRaw).replace(/\?w=\d+&thumb=true$/, "") : undefined,
       localizedStoreDisplayClassification: type,
       storeDisplayClassification: type.toUpperCase().replace(/[^A-Z0-9]+/g, "_"),
       price: {
@@ -247,6 +253,7 @@ export async function fetchBestGamePriceForCountry(
     countryName: country.name,
     isoCode: country.isoCode,
     gameName: decodeHtmlEntities(best.name),
+    posterUrl: best.posterUrl ?? null,
     productType: best.localizedStoreDisplayClassification ?? best.storeDisplayClassification ?? "Unknown",
     productId: best.id,
     currency,

@@ -49,6 +49,7 @@ export interface GamePriceRecord {
   countryName: string;
   isoCode: string;
   gameName: string;
+  posterUrl?: string | null;
   productType: string;
   productId: string;
   currency: string | null;
